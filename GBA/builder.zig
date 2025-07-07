@@ -12,6 +12,10 @@ pub const ImageSourceTarget = @import("assetconverter/image_converter.zig").Imag
 const gba_linker_script = libRoot() ++ "/gba.ld";
 const gba_lib_file = libRoot() ++ "/gba.zig";
 
+// Embed the contents so we can emit them into the build directory regardless of the package's location.
+const crt0_contents = @embedFile("gba_crt0.s");
+const ld_contents = @embedFile("gba.ld");
+
 var is_debug: ?bool = null;
 var use_gdb_option: ?bool = null;
 
@@ -37,7 +41,10 @@ pub fn addGBAStaticLibrary(b: *std.Build, lib_name: []const u8, source_file: []c
         .optimize = if (debug) .Debug else .ReleaseFast,
     });
 
-    lib.setLinkerScript(.{ .src_path = .{ .owner = b, .sub_path = gba_linker_script } });
+    lib.setLinkerScript(.{ .src_path = .{
+        .owner = b,
+        .sub_path = gba_linker_script,
+    } });
 
     return lib;
 }
@@ -59,14 +66,25 @@ pub fn addGBAExecutable(b: *std.Build, rom_name: []const u8, source_file: []cons
         break :blk gdb;
     };
 
-    const exe = b.addExecutable(.{
-        .name = rom_name,
+    const exe_mod = b.addModule(rom_name, .{
         .root_source_file = .{ .src_path = .{ .owner = b, .sub_path = source_file } },
         .target = b.resolveTargetQuery(gba_thumb_target_query),
         .optimize = if (debug) .Debug else .ReleaseFast,
     });
 
-    exe.setLinkerScript(.{ .src_path = .{ .owner = b, .sub_path = gba_linker_script } });
+    const exe = b.addExecutable(.{
+        .name = rom_name,
+        .root_module = exe_mod,
+    });
+
+    // Generate the linker script and crt0 assembly inside the build directory.
+    const write_step = b.addWriteFiles();
+    const ld_path = write_step.add("gba.ld", ld_contents);
+    const crt0_path = write_step.add("gba_crt0.s", crt0_contents);
+
+    exe.setLinkerScript(ld_path);
+    exe.addAssemblyFile(crt0_path);
+
     if (use_gdb) {
         b.installArtifact(exe);
     } else {
@@ -80,9 +98,12 @@ pub fn addGBAExecutable(b: *std.Build, rom_name: []const u8, source_file: []cons
         b.default_step.dependOn(&install_bin_step.step);
     }
 
-    const gba_lib = createGBALib(b, debug);
-    exe.root_module.addAnonymousImport("gba", .{ .root_source_file = .{ .src_path = .{ .owner = b, .sub_path = gba_lib_file } } });
-    exe.linkLibrary(gba_lib);
+    const gba_mod = b.addModule("ZigGBA", .{
+        .root_source_file = b.path(gba_lib_file),
+        .target = b.resolveTargetQuery(gba_thumb_target_query),
+        .optimize = if (debug) .Debug else .ReleaseFast,
+    });
+    exe_mod.addImport("gba", gba_mod);
 
     b.default_step.dependOn(&exe.step);
 
