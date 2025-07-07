@@ -1,68 +1,202 @@
+/*
+ * SPDX-License-Identifier: CC0-1.0
+ *
+ * SPDX-FileContributor: Antonio Niño Díaz, 2022
+ */
+
+/*
+ * Some links with information about linker scripts:
+ *
+ * - https://refspecs.linuxbase.org/LSB_3.1.1/LSB-Core-generic/LSB-Core-generic/specialsections.html
+ *
+ * - https://blog.thea.codes/the-most-thoroughly-commented-linker-script/
+ *
+ * - http://beefchunk.com/documentation/sys-programming/binary_formats/elf/elf_from_the_programmers_perspective/node4.html
+ */
+
+OUTPUT_FORMAT("elf32-littlearm")
+OUTPUT_ARCH(arm)
+ENTRY(entrypoint)
+
 MEMORY {
-    sram    : ORIGIN = 0x0E000000, LENGTH = 64K
-    rom	    : ORIGIN = 0x08000000, LENGTH = 32M
-    iwram	: ORIGIN = 0x03000000, LENGTH = 32K
-    ewram	: ORIGIN = 0x02000000, LENGTH = 256K
+    ROM     : ORIGIN = 0x08000000, LENGTH = 32M
+    IWRAM   : ORIGIN = 0x03000000, LENGTH = 32K
+    EWRAM   : ORIGIN = 0x02000000, LENGTH = 256K
 }
 
-ENTRY(__text_start)
+/* Set stack pointers the same way as the BIOS */
 
-OUTPUT_FORMAT("elf32-littlearm", "elf32-bigarm", "elf32-littlearm")
-OUTPUT_ARCH(arm)
+__STACK_SVC_SIZE__      = 0x40;
+__STACK_IRQ_SIZE__      = 0xA0;
+__STACK_USR_SIZE_MIN__  = 0x200; /* Minimum size, the real size may be bigger */
 
-__text_start = ORIGIN(rom);
-__eheap_end = ORIGIN(ewram) + LENGTH(ewram);
-__iwram_start = ORIGIN(iwram);
-__iwram_top = ORIGIN(iwram) + LENGTH(iwram);
-__sp_irq = __iwram_top - 0x060;
-__sp_usr = __sp_irq - 0x0a0;
-__irq_flags = 0x03007ff8;
+__STACK_END__       = ORIGIN(IWRAM) + LENGTH(IWRAM) - 0x20; /* Used by BIOS */
+__STACK_SVC_END__   = __STACK_END__;
+__STACK_SVC_START__ = __STACK_SVC_END__ - __STACK_SVC_SIZE__;
+__STACK_IRQ_END__   = __STACK_SVC_START__;
+__STACK_IRQ_START__ = __STACK_IRQ_END__ - __STACK_IRQ_SIZE__;
+__STACK_USR_END__   = __STACK_IRQ_START__;
+__STACK_USR_START__ = __STACK_USR_END__ - __STACK_USR_SIZE_MIN__;
+__STACK_START__     = __STACK_USR_START__;
 
 SECTIONS
 {
-    . = __text_start;
+    /*
+     * ROM sections
+     * ============
+     */
 
-    .text :
+    /* Header and crt0 */
+
+    .gba_crt0 : ALIGN(4)
     {
-        KEEP(*(.gbaheader))
-        KEEP(*(._start))
-        *(EXCLUDE_FILE (*.iwram*) .text*)
-        . ALIGN(4);
-    } >rom = 0xff
+        KEEP (*(.gba_crt0))
+    } > ROM
 
-    __text_end = .;
-    .fini :
+    /* Code */
+
+    .text : ALIGN(4)
     {
-        KEEP (*(.fini))
-        . = ALIGN(4);
-    } >rom =0
+        *(.text)
+        *(.text*)
+        *(.gnu.linkonce.t.*) /* Used for vague linking */
 
-    .rodata : {
+        /* ARM/Thumb interworking code */
+        *(.glue_7)  /* glue arm to thumb code */
+        *(.glue_7t) /* glue thumb to arm code */
+
+        /* Array of functions to be called at the start of the program */
+        KEEP(*(.init))
+        /* Array of functions to be called at the end of the program */
+        KEEP(*(.fini))
+    } > ROM
+
+    /* Read-only data */
+    .rodata : ALIGN(4)
+    {
+        *(.rodata)
         *(.rodata*)
-        . = ALIGN(4);
-    } >rom = 0xff
+        *(.gnu.linkonce.r.*) /* Used for vague linking */
+    } > ROM
 
-    .ARM.extab   : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >rom
-    __exidx_start = .;
-    .ARM.exidx   : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) } >rom
-    __exidx_end = .;
+   /*
+    * Required for C++ and for C programs that try to examine backtraces. Each
+    * function that can throw exceptions has entries in exidx and extab.
+    *
+    * - exidx is used to contain index entries for stack unwinding.
+    * - extab names sections containing exception unwinding information.
+    */
 
-    __data_lma = .;
-    .data : AT(__data_lma) {
-        __data_start__ = ABSOLUTE(.);
-        *(.data)
-        . = ALIGN(4);
-        __data_end__ = ABSOLUTE(.);
-    } >ewram = 0xff
+    .ARM.extab : ALIGN(4)
+    {
+        *(.ARM.extab* .gnu.linkonce.armextab.*)
+    } > ROM
 
-    __bss_lma = .;
-    .bss ALIGN(4) (NOLOAD): AT(__bss_lma) {
-        __bss_start__ = ABSOLUTE(.);
-        *(.dynbss)
-        *(.gnu.linkonce.b*)
+    .ARM.exidx : ALIGN(4)
+    {
+        PROVIDE_HIDDEN(__exidx_start = .);
+        *(.ARM.exidx* .gnu.linkonce.armexidx.*)
+        PROVIDE_HIDDEN(__exidx_end = .);
+    } > ROM
+
+    /* Array of functions to be called during initialization of the program */
+
+    /*
+     * IWRAM sections
+     * ==============
+     */
+
+    /* Uninitialized variables */
+
+    .bss (NOLOAD) : ALIGN(4)
+    {
         *(.bss)
-        *(COMMON)
+        *(.bss*)
+        *(.gnu.linkonce.b.*) /* Used for vague linking */
+        *(COMMON) /* In case -fcommon is used in gcc (not used by default) */
         . = ALIGN(4);
-        __bss_end__ = ABSOLUTE(.);
-    } >ewram
+    } > IWRAM
+
+    __IWRAM_BSS_START__ = ADDR(.bss);
+    __IWRAM_BSS_SIZE__ = SIZEOF(.bss);
+    __IWRAM_BSS_END__ = __IWRAM_BSS_START__ + __IWRAM_BSS_SIZE__;
+
+    /* Read-write data goes into IWRAM */
+
+    .data : ALIGN(4)
+    {
+        __DATA_START__ = .;
+        *(.data)
+        *(.data*)
+        *(.gnu.linkonce.d.*) /* Used for vague linking */
+        . = ALIGN(4);
+        __DATA_END__ = .;
+    } > IWRAM AT> ROM
+
+    __DATA_SIZE__ = __DATA_END__ - __DATA_START__;
+    __DATA_LMA__ = LOADADDR(.data);
+
+    /* Sections that the user requests to add to IWRAM */
+
+    .iwram : ALIGN(4)
+    {
+        __IWRAM_START__ = .;
+        *(.iwram)
+        *(.iwram*)
+        *iwram.*(.text*)
+        *iwram.*(.data*)
+        . = ALIGN(4);
+        __IWRAM_END__ = .;
+    } > IWRAM AT> ROM
+
+    __IWRAM_SIZE__ = __IWRAM_END__ - __IWRAM_START__;
+    __IWRAM_LMA__ = LOADADDR(.iwram);
+
+    /* The stack goes afterwards, check that there aren't overflows */
+
+    ASSERT(__IWRAM_END__ <= __STACK_START__,
+           "Not enough free IWRAM for stack")
+
+    /* Calculate real size of the user stack */
+
+    __STACK_USR_SIZE__ = __STACK_USR_END__ - __IWRAM_END__;
+
+    /*
+     * EWRAM sections
+     * ==============
+     */
+
+    /*
+     * Uninitialized data explicitly placed in EWRAM. This section must be
+     * called ".sbss" for compatibility with devkitARM.
+     */
+
+    .sbss (NOLOAD) : ALIGN(4)
+    {
+        *(.sbss)
+        *(.sbss*)
+        . = ALIGN(4);
+    } > EWRAM
+
+    /* Initialized data explicitly placed in EWRAM */
+
+    .ewram : ALIGN(4)
+    {
+        __EWRAM_START__ = .;
+        *(.ewram)
+        *(.ewram*)
+        *ewram.*(.text*)
+        *ewram.*(.data*)
+        . = ALIGN(4);
+        __EWRAM_END__ = .;
+    } > EWRAM AT > ROM
+
+    __EWRAM_SIZE__ = __EWRAM_END__ - __EWRAM_START__;
+    __EWRAM_LMA__ = LOADADDR(.ewram);
+
+    /* The heap information should be after the last EWRAM section */
+
+    __HEAP_START__  = __EWRAM_END__;
+    __HEAP_END__    = ORIGIN(EWRAM) + LENGTH(EWRAM);
+    __HEAP_SIZE__   = __HEAP_END__ - __HEAP_START__;
 }
