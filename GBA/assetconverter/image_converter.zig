@@ -1,6 +1,6 @@
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const zigimg = @import("zigimg/zigimg.zig");
+const zigimg = @import("zigimg");
 const OctTreeQuantizer = zigimg.OctTreeQuantizer;
 const fs = std.fs;
 const mem = std.mem;
@@ -85,6 +85,9 @@ pub const ImageConverter = struct {
             for (0..diff) |_| {
                 try image_out_stream.writeInt(u8, 0, .little);
             }
+
+            var data = convert.image;
+            data.deinit();
         }
     }
 
