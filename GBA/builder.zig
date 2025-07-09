@@ -114,39 +114,71 @@ const Mode4ConvertStep = struct {
     step: Step,
     images: []const ImageSourceTarget,
     target_palette_path: []const u8,
+    converter_exe: *std.Build.Step.Compile,
+    install_step: *std.Build.Step.InstallArtifact,
 
     pub fn init(b: *std.Build, images: []const ImageSourceTarget, target_palette_path: []const u8) Mode4ConvertStep {
+        // Build the image converter executable
+        const converter_exe = b.addExecutable(.{
+            .name = "image-converter",
+            .root_source_file = b.path("GBA/assetconverter/main.zig"),
+            .optimize = .Debug,
+            .target = b.standardTargetOptions(.{}),
+        });
+
+        // Add zigimg as a module dependency
+        const zigimg_dep = b.dependency("zigimg", .{});
+        const zigimg_mod = zigimg_dep.module("zigimg");
+        converter_exe.root_module.addImport("zigimg", zigimg_mod);
+
+        // Add the GBA directory as a module
+        const gba_mod = b.addModule("gba", .{
+            .root_source_file = b.path("GBA/color.zig"),
+        });
+        converter_exe.root_module.addImport("gba", gba_mod);
+
+        // Install the converter so we can run it
+        var install_step = b.addInstallArtifact(converter_exe, .{});
+
+        var step = Step.init(.{
+            .id = .custom,
+            .name = b.fmt("ConvertMode4Image {s}", .{target_palette_path}),
+            .owner = b,
+            .makeFn = make,
+        });
+
+        // Make our step depend on the installation
+        step.dependOn(&install_step.step);
+
         return Mode4ConvertStep{
-            .step = Step.init(.{
-                .id = .custom,
-                .name = b.fmt("ConvertMode4Image {s}", .{target_palette_path}),
-                .owner = b,
-                .makeFn = make,
-            }),
+            .step = step,
             .images = images,
             .target_palette_path = target_palette_path,
+            .converter_exe = converter_exe,
+            .install_step = install_step,
         };
     }
 
     fn make(step: *Step, options: Step.MakeOptions) anyerror!void {
         const self: *Mode4ConvertStep = @fieldParentPtr("step", step);
-        const ImageSourceTargetList = ArrayList(ImageSourceTarget);
-
-        var full_images = ImageSourceTargetList.init(step.owner.allocator);
-        defer full_images.deinit();
-
         var node = options.progress_node.start("Converting mode4 images", 1);
         defer node.end();
 
-        for (self.images) |image| {
-            try full_images.append(ImageSourceTarget{
-                .source = self.step.owner.pathFromRoot(image.source),
-                .target = self.step.owner.pathFromRoot(image.target),
-            });
-        }
+        // Convert all images in a single invocation
+        const convert_step = self.step.owner.addRunArtifact(self.converter_exe);
 
-        const full_target_palette_path = self.step.owner.pathFromRoot(self.target_palette_path);
-        try ImageConverter.convertMode4Image(self.step.owner.allocator, full_images.items, full_target_palette_path);
+        // Add all source and target paths as arguments
+        var args = std.ArrayList([]const u8).init(self.step.owner.allocator);
+        defer args.deinit();
+
+        for (self.images) |image| {
+            try args.append(self.step.owner.pathFromRoot(image.source));
+            try args.append(self.step.owner.pathFromRoot(image.target));
+        }
+        try args.append(self.step.owner.pathFromRoot(self.target_palette_path));
+
+        convert_step.addArgs(args.items);
+        try convert_step.step.make(options);
     }
 };
 
