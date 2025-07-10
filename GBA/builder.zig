@@ -15,6 +15,9 @@ const gba_lib_file = libRoot() ++ "/gba.zig";
 // Embed the contents so we can emit them into the build directory regardless of the package's location.
 const crt0_contents = @embedFile("gba_crt0.s");
 const ld_contents = @embedFile("gba.ld");
+const asset_converter_contents = @embedFile("assetconverter/main.zig");
+const image_converter_contents = @embedFile("assetconverter/image_converter.zig");
+const color_contents = @embedFile("color.zig");
 
 var is_debug: ?bool = null;
 var use_gdb_option: ?bool = null;
@@ -53,20 +56,20 @@ pub fn createGBALib(b: *std.Build, debug: bool) *std.Build.Step.Compile {
     return addGBAStaticLibrary(b, "ZigGBA", gba_lib_file, debug);
 }
 
-pub fn addGBAExecutable(b: *std.Build, rom_name: []const u8, source_file: []const u8) *std.Build.Step.Compile {
-    const debug = is_debug orelse blk: {
-        const dbg = b.option(bool, "debug", "Generate a debug build") orelse false;
-        is_debug = dbg;
-        break :blk dbg;
-    };
-
+pub fn addGBAExecutable(
+    b: *std.Build,
+    rom_name: []const u8,
+    source_file: []const u8,
+    gba_mod: *std.Build.Module,
+    debug: bool,
+) *std.Build.Step.Compile {
     const use_gdb = use_gdb_option orelse blk: {
         const gdb = b.option(bool, "gdb", "Generate a ELF file for easier debugging with mGBA remote GDB support") orelse false;
         use_gdb_option = gdb;
         break :blk gdb;
     };
 
-    const exe_mod = b.addModule(rom_name, .{
+    const exe_mod = b.createModule(.{
         .root_source_file = .{ .src_path = .{ .owner = b, .sub_path = source_file } },
         .target = b.resolveTargetQuery(gba_thumb_target_query),
         .optimize = if (debug) .Debug else .ReleaseFast,
@@ -98,11 +101,6 @@ pub fn addGBAExecutable(b: *std.Build, rom_name: []const u8, source_file: []cons
         b.default_step.dependOn(&install_bin_step.step);
     }
 
-    const gba_mod = b.addModule("ZigGBA", .{
-        .root_source_file = b.path(gba_lib_file),
-        .target = b.resolveTargetQuery(gba_thumb_target_query),
-        .optimize = if (debug) .Debug else .ReleaseFast,
-    });
     exe_mod.addImport("gba", gba_mod);
 
     b.default_step.dependOn(&exe.step);
@@ -118,12 +116,21 @@ const Mode4ConvertStep = struct {
     install_step: *std.Build.Step.InstallArtifact,
 
     pub fn init(b: *std.Build, images: []const ImageSourceTarget, target_palette_path: []const u8) Mode4ConvertStep {
+        const write_step = b.addWriteFiles();
+        const asset_converter_path = write_step.add("assetconverter/main.zig", asset_converter_contents);
+        const color_path = write_step.add("color.zig", color_contents);
+        _ = write_step.add("assetconverter/image_converter.zig", image_converter_contents);
+
+        const mod = b.createModule(.{
+            .root_source_file = asset_converter_path,
+            .optimize = .Debug,
+            .target = b.standardTargetOptions(.{}),
+        });
+
         // Build the image converter executable
         const converter_exe = b.addExecutable(.{
             .name = "image-converter",
-            .root_source_file = b.path("GBA/assetconverter/main.zig"),
-            .optimize = .Debug,
-            .target = b.standardTargetOptions(.{}),
+            .root_module = mod,
         });
 
         // Add zigimg as a module dependency
@@ -133,7 +140,7 @@ const Mode4ConvertStep = struct {
 
         // Add the GBA directory as a module
         const gba_mod = b.addModule("gba", .{
-            .root_source_file = b.path("GBA/color.zig"),
+            .root_source_file = color_path,
         });
         converter_exe.root_module.addImport("gba", gba_mod);
 
