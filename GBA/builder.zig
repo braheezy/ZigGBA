@@ -58,10 +58,9 @@ pub fn createGBALib(b: *std.Build, debug: bool) *std.Build.Step.Compile {
 
 pub fn addGBAExecutable(
     b: *std.Build,
+    gba_mod: *std.Build.Module,
     rom_name: []const u8,
     source_file: []const u8,
-    gba_mod: *std.Build.Module,
-    debug: bool,
 ) *std.Build.Step.Compile {
     const use_gdb = use_gdb_option orelse blk: {
         const gdb = b.option(bool, "gdb", "Generate a ELF file for easier debugging with mGBA remote GDB support") orelse false;
@@ -72,7 +71,7 @@ pub fn addGBAExecutable(
     const exe_mod = b.createModule(.{
         .root_source_file = .{ .src_path = .{ .owner = b, .sub_path = source_file } },
         .target = b.resolveTargetQuery(gba_thumb_target_query),
-        .optimize = if (debug) .Debug else .ReleaseFast,
+        .optimize = .ReleaseFast,
     });
 
     const exe = b.addExecutable(.{
