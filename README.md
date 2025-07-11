@@ -16,19 +16,19 @@ In your `build.zig`:
 
 ```zig
 const std = @import("std");
-# Import ziggba to get access to build helpers
+// Import ziggba to get access to build helpers
 const ziggba = @import("ziggba");
 
 pub fn build(b: *std.Build) void {
-    # Get the GBA module
+    // Get the GBA module
     const ziggba_dep = b.dependency("ziggba", .{});
     const gba_mod = ziggba_dep.module("gba");
 
-    # Using a build helper, build a GBA ROM from your source
+    // Using a build helper, build a GBA ROM from your source
     _ = ziggba.addGBAExecutable(b, gba_mod, "tonc_tutor", "src/main.zig");
 
     const mode4flip = ziggba.addGBAExecutable(b, gba_mod, "mode4flip", "mode4flip.zig");
-    # Convert bitmaps and create a palette. This requires `zigimg` in your `build.zig.zon`
+    // Convert bitmaps and create a palette. This requires `zigimg` in your `build.zig.zon`
     ziggba.convertMode4Images(mode4flip, &[_]ziggba.ImageSourceTarget{
         .{
             .source = "front.bmp",
