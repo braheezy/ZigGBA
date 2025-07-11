@@ -136,13 +136,13 @@ const Mode4ConvertStep = struct {
         // Add zigimg as a module dependency
         const zigimg_dep = b.dependency("zigimg", .{});
         const zigimg_mod = zigimg_dep.module("zigimg");
-        converter_exe.root_module.addImport("zigimg", zigimg_mod);
+        mod.addImport("zigimg", zigimg_mod);
 
         // Add the GBA directory as a module
-        const gba_mod = b.addModule("gba", .{
+        const color_mod = b.createModule(.{
             .root_source_file = color_path,
         });
-        converter_exe.root_module.addImport("gba", gba_mod);
+        mod.addImport("color", color_mod);
 
         // Install the converter so we can run it
         var install_step = b.addInstallArtifact(converter_exe, .{});
