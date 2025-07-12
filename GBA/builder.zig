@@ -15,6 +15,7 @@ const gba_lib_file = libRoot() ++ "/gba.zig";
 // Embed the contents so we can emit them into the build directory regardless of the package's location.
 const crt0_contents = @embedFile("gba_crt0.s");
 const ld_contents = @embedFile("gba.ld");
+const gba_start_zig_contents = @embedFile("gba_start.zig");
 const asset_converter_contents = @embedFile("assetconverter/main.zig");
 const image_converter_contents = @embedFile("assetconverter/image_converter.zig");
 const color_contents = @embedFile("color.zig");
@@ -83,9 +84,23 @@ pub fn addGBAExecutable(
     const write_step = b.addWriteFiles();
     const ld_path = write_step.add("gba.ld", ld_contents);
     const crt0_path = write_step.add("gba_crt0.s", crt0_contents);
+    const gba_start_zig_path = write_step.add("gba_start.zig", gba_start_zig_contents);
+
+    const start_module = b.createModule(.{
+        .root_source_file = gba_start_zig_path,
+        .target = b.resolveTargetQuery(gba_thumb_target_query),
+        .optimize = .ReleaseFast,
+    });
+    start_module.addImport("gba", gba_mod);
+
+    const start_zig_obj = b.addObject(.{
+        .name = "gba_start",
+        .root_module = start_module,
+    });
 
     exe.setLinkerScript(ld_path);
     exe.addAssemblyFile(crt0_path);
+    exe.addObject(start_zig_obj);
 
     if (use_gdb) {
         b.installArtifact(exe);
