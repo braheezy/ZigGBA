@@ -17,6 +17,8 @@ const gba_thumb_target_query = blk: {
 
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
+    const target = b.standardTargetOptions(.{});
+
     const gba_mod = b.addModule("gba", .{
         .root_source_file = b.path("GBA/gba.zig"),
         .target = b.resolveTargetQuery(gba_thumb_target_query),
@@ -60,7 +62,7 @@ pub fn build(b: *std.Build) void {
         "mode4flip",
         "examples/mode4flip/mode4flip.zig",
     );
-    convertMode4Images(mode4flip, &[_]ImageSourceTarget{
+    convertMode4Images(mode4flip, target, &[_]ImageSourceTarget{
         .{
             .source = "examples/mode4flip/front.bmp",
             .target = "examples/mode4flip/front.agi",
@@ -78,10 +80,6 @@ pub fn build(b: *std.Build) void {
         "keydemo",
         "examples/keydemo/keydemo.zig",
     );
-    // keydemo.addCSourceFile(.{
-    //     .file = .{ .src_path = .{ .owner = b, .sub_path = "examples/keydemo/gba_pic.c" } },
-    //     .flags = &[_][]const u8{"-std=c99"},
-    // });
 
     // Simple OBJ demo, TODO: Use tile and palette data created by the build system
     _ = addGBAExecutable(

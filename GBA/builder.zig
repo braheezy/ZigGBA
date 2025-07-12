@@ -129,7 +129,7 @@ const Mode4ConvertStep = struct {
     converter_exe: *std.Build.Step.Compile,
     install_step: *std.Build.Step.InstallArtifact,
 
-    pub fn init(b: *std.Build, images: []const ImageSourceTarget, target_palette_path: []const u8) Mode4ConvertStep {
+    pub fn init(b: *std.Build, target: std.Build.ResolvedTarget, images: []const ImageSourceTarget, target_palette_path: []const u8) Mode4ConvertStep {
         const write_step = b.addWriteFiles();
         const asset_converter_path = write_step.add("assetconverter/main.zig", asset_converter_contents);
         const color_path = write_step.add("color.zig", color_contents);
@@ -138,7 +138,7 @@ const Mode4ConvertStep = struct {
         const mod = b.createModule(.{
             .root_source_file = asset_converter_path,
             .optimize = .Debug,
-            .target = b.standardTargetOptions(.{}),
+            .target = target,
         });
 
         // Build the image converter executable
@@ -203,8 +203,8 @@ const Mode4ConvertStep = struct {
     }
 };
 
-pub fn convertMode4Images(compile_step: *std.Build.Step.Compile, images: []const ImageSourceTarget, target_palette_path: []const u8) void {
+pub fn convertMode4Images(compile_step: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, images: []const ImageSourceTarget, target_palette_path: []const u8) void {
     const convert_image_step = compile_step.step.owner.allocator.create(Mode4ConvertStep) catch unreachable;
-    convert_image_step.* = Mode4ConvertStep.init(compile_step.step.owner, images, target_palette_path);
+    convert_image_step.* = Mode4ConvertStep.init(compile_step.step.owner, target, images, target_palette_path);
     compile_step.step.dependOn(&convert_image_step.step);
 }
