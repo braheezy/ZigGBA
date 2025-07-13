@@ -16,7 +16,7 @@ extern var __data_end__: u8;
 
 export fn _start_zig() noreturn {
     // Use BIOS function to clear all data
-    // bios.resetRamRegisters(bios.RamResetFlags.initFull());
+    bios.resetRamRegisters(bios.RamResetFlags.initFull());
     // Clear .bss
     mem.memset32(&__bss_start__, 0, @intFromPtr(&__bss_end__) - @intFromPtr(&__bss_start__));
     // Copy .data section to EWRAM
