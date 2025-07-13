@@ -136,4 +136,12 @@ pub fn build(b: *std.Build) void {
     //     .file = .{ .src_path = .{ .owner = b, .sub_path = "examples/objAffine/metr.c" } },
     //     .flags = &[_][]const u8{"-std=c99"},
     // });
+
+    // text
+    _ = addGBAExecutable(
+        b,
+        gba_mod,
+        "text",
+        "examples/text/text.zig",
+    );
 }

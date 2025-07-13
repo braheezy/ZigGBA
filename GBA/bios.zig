@@ -335,7 +335,7 @@ pub fn objAffineSet(source: []align(4) const volatile ObjAffineSource, dest: *vo
 //     };
 // }
 
-pub fn bitUnpack(source: []const u8, dest: *align(4) const anyopaque, args: *const BitUnpackArgs) void {
+pub fn bitUnpack(source: *const u8, dest: *align(4) const anyopaque, args: *const BitUnpackArgs) void {
     call3Return0(.bit_unpack, source, dest, args);
 }
 
