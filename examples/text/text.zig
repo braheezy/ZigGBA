@@ -11,7 +11,6 @@ export fn main() void {
     gba.text.initSeDefault(0, .{
         .tile_base_block = 0,
         .screen_base_block = 31,
-        .palette_mode = .color_16,
     });
 
     gba.text.write("#{P:72,64}");

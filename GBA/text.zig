@@ -5,13 +5,14 @@ const Color = gba.Color;
 const display = gba.display;
 const bios = gba.bios;
 
+/// Classic convenience initialiser targeting the global default context.
 pub fn initSeDefault(bg_number: i32, bg_control: bg.Control) void {
-    initSe(bg_number, bg_control, 0xF000, Color.yellow, 0, &sys8_font, null);
+    initSeCtx(&default_ctx, bg_number, bg_control, 0xF000, Color.yellow, 0, &sys8_font, null);
 }
 
-/// Write a (potentially control-coded) UTF-8 string to the screen.
+/// Write a (potentially control-coded) UTF-8 string using the given context.
 /// Only ASCII 32-126 are currently supported.
-pub fn write(text: []const u8) void {
+pub fn writeCtx(ctx: *TextContext, text: []const u8) void {
     var i: usize = 0;
     while (i < text.len) : (i += 1) {
         const c = text[i];
@@ -27,68 +28,94 @@ pub fn write(text: []const u8) void {
             }
             if (close_idx == null) {
                 // No closing brace – treat literally.
-                putChar('#');
+                if (ctx.draw_glyph) |dg| dg(ctx, '#');
                 continue;
             }
             const close = close_idx.?;
-            parseControl(text[i .. close + 1]);
+            parseControlCtx(ctx, text[i .. close + 1]);
             i = close; // loop will add 1
             continue;
         }
 
         if (c == '\n') {
-            newLine();
+            newLineCtx(ctx);
         } else if (c >= 32 and c <= 126) {
-            putChar(c);
+            if (ctx.draw_glyph) |dg| dg(ctx, c);
         }
     }
 }
+
+/// Convenience wrapper that writes using the global default context.
+pub fn write(text: []const u8) void {
+    writeCtx(&default_ctx, text);
+}
+
+// ------------------------------------------------------------
+// Generic text-engine context & backend abstraction
+// ------------------------------------------------------------
+
+/// Runtime context for the text engine. Multiple instances can coexist, each
+/// with their own target surface/back-end.
+pub const TextContext = struct {
+    // Target tile/surface parameters (for SE back-end).
+    tile_start: u32 = 0,
+    palette_bank: u4 = 0,
+    char_block: u5 = 0,
+    screen_block: u5 = 0,
+
+    // Font currently in use.
+    font: *const Font = &sys8_font,
+
+    // Cursor position in pixels (not tiles).
+    cursor_x: u16 = 0,
+    cursor_y: u16 = 0,
+
+    // Pointer to a backend-specific glyph renderer. If null, nothing is drawn.
+    draw_glyph: ?*const fn (*TextContext, u8) void = null,
+};
+
+/// Global default context used by the classic convenience wrappers.
+var default_ctx = TextContext{};
 
 // ------------------------------------------------------------
 // Internal state & helpers
 // ------------------------------------------------------------
 
-// Runtime context for the text engine.
-var text_tile_start: u32 = 0;
-var text_palette_bank: u4 = 0;
-var text_char_block: u5 = 0;
-var text_screen_block: u5 = 0;
-var text_font: *const Font = &sys8_font;
+// (Former global state is now stored per-context.)
 
-var cursor_x: u16 = 0; // Pixels (not tiles)
-var cursor_y: u16 = 0;
-
-fn newLine() void {
-    cursor_x = 0;
-    cursor_y += @as(u16, text_font.cell_h);
+fn newLineCtx(ctx: *TextContext) void {
+    ctx.cursor_x = 0;
+    ctx.cursor_y += @as(u16, ctx.font.cell_h);
 }
 
-fn putChar(ascii: u8) void {
+// ---------------------------------------------------------------------------
+// Screen-entry (regular BG) glyph renderer – previously `putChar`
+// ---------------------------------------------------------------------------
+
+fn seDrawGlyph(ctx: *TextContext, ascii: u8) void {
     if (ascii < 32 or ascii > 127) return; // unsupported
 
-    const gid: u32 = @as(u32, ascii) - @as(u32, text_font.char_offset);
-    const tx: u16 = cursor_x / @as(u16, text_font.cell_w);
-    const ty: u16 = cursor_y / @as(u16, text_font.cell_h);
+    const gid: u32 = @as(u32, ascii) - @as(u32, ctx.font.char_offset);
+    const tx: u16 = ctx.cursor_x / @as(u16, ctx.font.cell_w);
+    const ty: u16 = ctx.cursor_y / @as(u16, ctx.font.cell_h);
     if (tx >= 32 or ty >= 32) return; // out of bounds
 
-    // Pointer to the target screen-block (32×32 tile-map entries).
     const map_block_ptr: *volatile bg.TextScreenBlock =
-        &bg.screen_block_ram[text_screen_block];
+        &bg.screen_block_ram[ctx.screen_block];
 
     const entry_index = ty * 32 + tx;
-    // Write the entry in one go to avoid partial writes.
     map_block_ptr.*[entry_index] = .{
-        .tile_index = @intCast(text_tile_start + gid),
+        .tile_index = @intCast(ctx.tile_start + gid),
         .flip = .{},
-        .palette_index = text_palette_bank,
+        .palette_index = ctx.palette_bank,
     };
 
-    cursor_x += @as(u16, text_font.cell_w);
+    ctx.cursor_x += @as(u16, ctx.font.cell_w);
 }
 
 /// Parse the very small subset of control codes we care about.
 /// Currently only "#{P:x,y}" is handled.
-fn parseControl(code: []const u8) void {
+fn parseControlCtx(ctx: *TextContext, code: []const u8) void {
     // Expect format #{P:NN,NN}
     if (code.len < 4) return;
     if (code[2] != 'P' or code[3] != ':') return;
@@ -107,8 +134,8 @@ fn parseControl(code: []const u8) void {
     }
 
     // Update cursor position.
-    cursor_x = x;
-    cursor_y = y;
+    ctx.cursor_x = x;
+    ctx.cursor_y = y;
 }
 
 // ------------------------------------------------------------
@@ -171,14 +198,15 @@ pub const sys8_font: Font = .{
 // the compiler so that we can iterate in smaller steps.
 // ---------------------------------------------------------------------------
 
-fn initSe(
+fn initSeCtx(
+    ctx: *TextContext,
     bg_number: i32,
     bg_control: bg.Control,
     se0: u32,
     clrs: Color,
     bupofs: u32,
     font: ?*const Font,
-    proc: ?*const anyopaque,
+    proc: ?*const fn (*TextContext, u8) void,
 ) void {
     // Select font (default to sys8 if null).
     const f_ptr: *const Font = if (font) |p| p else &sys8_font;
@@ -189,12 +217,12 @@ fn initSe(
     _ = bupofs;
 
     // Store runtime parameters for other routines and configure BG control.
-    text_font = f_ptr;
-    text_char_block = bg_control.tile_base_block;
-    text_screen_block = bg_control.screen_base_block;
-    text_tile_start = tile_start;
-    text_palette_bank = palette_bank;
-    _ = proc;
+    ctx.font = f_ptr;
+    ctx.char_block = bg_control.tile_base_block;
+    ctx.screen_block = bg_control.screen_base_block;
+    ctx.tile_start = tile_start;
+    ctx.palette_bank = palette_bank;
+    ctx.draw_glyph = if (proc) |p| p else &seDrawGlyph;
     bg.ctrl[@intCast(bg_number)] = bg_control;
 
     // Prepare the palette: entry 1 = ink color.
@@ -232,8 +260,8 @@ fn initSe(
     }
 
     // Reset cursor position.
-    cursor_x = 0;
-    cursor_y = 0;
+    ctx.cursor_x = 0;
+    ctx.cursor_y = 0;
 }
 
 // Using BIOS SWI for bit-unpacking is more reliable for correct bit orders;
