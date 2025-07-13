@@ -16,6 +16,7 @@ pub const obj = @import("obj.zig");
 pub const timer = @import("timer.zig");
 pub const text = @import("text.zig");
 pub const utils = @import("utils.zig");
+pub const decompress = @import("decompress.zig");
 
 pub const ewram: *volatile [0x20000]u16 = @ptrFromInt(gba.mem.ewram);
 pub const iwram: *volatile [0x2000]u32 = @ptrFromInt(gba.mem.iwram);

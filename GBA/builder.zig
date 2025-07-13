@@ -18,6 +18,7 @@ const ld_contents = @embedFile("gba.ld");
 const gba_start_zig_contents = @embedFile("gba_start.zig");
 const asset_converter_contents = @embedFile("assetconverter/main.zig");
 const image_converter_contents = @embedFile("assetconverter/image_converter.zig");
+const lz77_contents = @embedFile("assetconverter/lz77.zig");
 const color_contents = @embedFile("color.zig");
 
 var is_debug: ?bool = null;
@@ -128,11 +129,13 @@ const Mode4ConvertStep = struct {
     target_palette_path: []const u8,
     converter_exe: *std.Build.Step.Compile,
     install_step: *std.Build.Step.InstallArtifact,
+    compress: bool = false,
 
     pub fn init(b: *std.Build, target: std.Build.ResolvedTarget, images: []const ImageSourceTarget, target_palette_path: []const u8) Mode4ConvertStep {
         const write_step = b.addWriteFiles();
         const asset_converter_path = write_step.add("assetconverter/main.zig", asset_converter_contents);
         const color_path = write_step.add("color.zig", color_contents);
+        _ = write_step.add("assetconverter/lz77.zig", lz77_contents);
         _ = write_step.add("assetconverter/image_converter.zig", image_converter_contents);
 
         const mod = b.createModule(.{
@@ -198,13 +201,23 @@ const Mode4ConvertStep = struct {
         }
         try args.append(self.step.owner.pathFromRoot(self.target_palette_path));
 
+        if (self.compress) {
+            convert_step.addArgs(&[_][]const u8{"--lz77"});
+        }
         convert_step.addArgs(args.items);
         try convert_step.step.make(options);
     }
 };
 
-pub fn convertMode4Images(compile_step: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, images: []const ImageSourceTarget, target_palette_path: []const u8) void {
+pub fn convertMode4Images(
+    compile_step: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    images: []const ImageSourceTarget,
+    target_palette_path: []const u8,
+    compress: bool,
+) void {
     const convert_image_step = compile_step.step.owner.allocator.create(Mode4ConvertStep) catch unreachable;
     convert_image_step.* = Mode4ConvertStep.init(compile_step.step.owner, target, images, target_palette_path);
+    convert_image_step.compress = compress;
     compile_step.step.dependOn(&convert_image_step.step);
 }

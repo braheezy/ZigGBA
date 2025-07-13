@@ -5,6 +5,7 @@ const OctTreeQuantizer = zigimg.OctTreeQuantizer;
 const fs = std.fs;
 const mem = std.mem;
 const std = @import("std");
+const lz77 = @import("lz77.zig");
 
 pub const ImageConverterError = error{InvalidPixelData};
 
@@ -16,7 +17,9 @@ pub const ImageSourceTarget = struct {
 };
 
 pub const ImageConverter = struct {
-    pub fn convertMode4Image(allocator: Allocator, images: []ImageSourceTarget, target_palette_file_path: []const u8) !void {
+    /// Convert images to GBA Mode 4 data. When `compress` is true, the image data
+    /// is LZ77-compressed before being written to disk (palette is always raw).
+    pub fn convertMode4Image(allocator: Allocator, images: []ImageSourceTarget, target_palette_file_path: []const u8, compress: bool) !void {
         var quantizer = OctTreeQuantizer.init(allocator);
         defer quantizer.deinit();
 
@@ -59,7 +62,7 @@ pub const ImageConverter = struct {
         }
 
         // Align palette file to a power of 4
-        var diff = mem.alignForward(usize, palette_count, 4) - palette_count;
+        const diff = mem.alignForward(usize, palette_count, 4) - palette_count;
         for (0..diff) |_| {
             try palette_out_stream.writeInt(u8, 0, .little);
         }
@@ -70,20 +73,59 @@ pub const ImageConverter = struct {
 
             var image_out_stream = image_file.writer();
 
-            // Write image file
-            var pixel_count: usize = 0;
+            // First collect all pixel indices in row-major order
+            var pixel_indices = ArrayList(u8).init(allocator);
+            defer pixel_indices.deinit();
 
-            var color_it = convert.image.iterator();
+            // Mode 4 is 240x160
+            const width: usize = 240;
+            const height: usize = 160;
 
-            while (color_it.next()) |pixel| : (pixel_count += 1) {
-                const raw_palette_index: usize = try quantizer.getPaletteIndex(pixel.to.premultipliedAlpha());
-                const palette_index: u8 = @as(u8, @intCast(raw_palette_index));
-                try image_out_stream.writeInt(u8, palette_index, .little);
+            // Ensure image dimensions match Mode 4
+            if (convert.image.width != width or convert.image.height != height) {
+                return error.InvalidImageDimensions;
             }
 
-            diff = mem.alignForward(usize, pixel_count, 4) - pixel_count;
-            for (0..diff) |_| {
-                try image_out_stream.writeInt(u8, 0, .little);
+            // Process pixels row by row
+            var color_it = convert.image.iterator();
+            while (color_it.next()) |pixel| {
+                const raw_palette_index: usize = try quantizer.getPaletteIndex(pixel.to.premultipliedAlpha());
+                const palette_index: u8 = @as(u8, @intCast(raw_palette_index));
+                try pixel_indices.append(palette_index);
+            }
+
+            // Now pack pixels two per 16-bit word for Mode 4
+            var packed_pixels = ArrayList(u16).init(allocator);
+            defer packed_pixels.deinit();
+
+            var i: usize = 0;
+            while (i < pixel_indices.items.len) : (i += 2) {
+                const lo = pixel_indices.items[i];
+                const hi = if (i + 1 < pixel_indices.items.len) pixel_indices.items[i + 1] else 0;
+                const packed_word = @as(u16, lo) | (@as(u16, hi) << 8);
+                try packed_pixels.append(packed_word);
+            }
+
+            // Convert packed pixels to bytes for compression
+            var packed_bytes = std.ArrayList(u8).init(allocator);
+            defer packed_bytes.deinit();
+
+            for (packed_pixels.items) |word| {
+                try packed_bytes.append(@as(u8, @truncate(word & 0xFF))); // Low byte first
+                try packed_bytes.append(@as(u8, @truncate(word >> 8))); // High byte second
+            }
+
+            if (compress) {
+                const compressed = try lz77.compress(allocator, packed_bytes.items, true);
+                defer allocator.free(compressed);
+                try image_out_stream.writeAll(compressed);
+            } else {
+                // Write raw pixels
+                try image_out_stream.writeAll(packed_bytes.items);
+
+                // Align to 4-byte boundary for convenience
+                const diff_raw = mem.alignForward(usize, packed_bytes.items.len, 4) - packed_bytes.items.len;
+                for (0..diff_raw) |_| try image_out_stream.writeInt(u8, 0, .little);
             }
 
             var data = convert.image;

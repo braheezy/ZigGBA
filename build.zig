@@ -71,7 +71,25 @@ pub fn build(b: *std.Build) void {
             .source = "examples/mode4flip/back.bmp",
             .target = "examples/mode4flip/back.agi",
         },
-    }, "examples/mode4flip/mode4flip.agp");
+    }, "examples/mode4flip/mode4flip.agp", false);
+
+    // Mode 4 Flip but with lz77 compression
+    const mode4fliplz = addGBAExecutable(
+        b,
+        gba_mod,
+        "mode4fliplz",
+        "examples/mode4flip/mode4fliplz.zig",
+    );
+    convertMode4Images(mode4fliplz, target, &[_]ImageSourceTarget{
+        .{
+            .source = "examples/mode4flip/front.bmp",
+            .target = "examples/mode4flip/front.lz",
+        },
+        .{
+            .source = "examples/mode4flip/back.bmp",
+            .target = "examples/mode4flip/back.lz",
+        },
+    }, "examples/mode4flip/mode4flip.agp", true);
 
     // Key demo, TODO: Use image created by the build system once we support indexed image
     _ = addGBAExecutable(
