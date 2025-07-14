@@ -7,7 +7,7 @@ export var header linksection(".gbaheader") = gba.initHeader("MODE4FLIP", "AMFE"
 
 const front_image_data = @embedFile("front.lz");
 const back_image_data = @embedFile("back.lz");
-const palette_data = @embedFile("mode4flip.agp");
+const palette_data = @embedFile("mode4fliplz.agp");
 
 fn loadImageData() void {
     decompress.lz77ToVRAM(front_image_data, display.vram);
@@ -21,7 +21,7 @@ export fn main() void {
         .bg2 = .enable,
     };
 
-    loadImageData(true);
+    loadImageData();
 
     var i: u32 = 0;
     while (true) : (i += 1) {

@@ -78,7 +78,7 @@ pub fn build(b: *std.Build) void {
         b,
         gba_mod,
         "mode4fliplz",
-        "examples/mode4flip/mode4fliplz.zig",
+        "examples/mode4fliplz/mode4fliplz.zig",
     );
     convertMode4Images(mode4fliplz, target, &[_]ImageSourceTarget{
         .{
@@ -89,7 +89,7 @@ pub fn build(b: *std.Build) void {
             .source = "examples/mode4flip/back.bmp",
             .target = "examples/mode4flip/back.lz",
         },
-    }, "examples/mode4flip/mode4flip.agp", true);
+    }, "examples/mode4fliplz/mode4fliplz.agp", true);
 
     // Key demo, TODO: Use image created by the build system once we support indexed image
     _ = addGBAExecutable(
