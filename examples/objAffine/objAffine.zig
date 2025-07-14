@@ -39,7 +39,7 @@ export fn main() void {
     shadow_metroid.setPosition(96, 32);
     shadow_metroid.getAffine().setIdentity();
 
-    obj.update(2);
+    obj.update(128);
 
     while (true) {
         display.naiveVSync();
