@@ -20,6 +20,14 @@ export fn main() void {
     gba.mem.memcpy32(obj.tile_ram, &metr.box_tiles, metr.box_tiles.len * 4);
     gba.mem.memcpy32(obj.palette, &metr.pal, metr.pal.len * 4);
 
+    gba.text.initChr4cDefault(0, .{
+        .tile_base_block = 2,
+        .screen_base_block = 28,
+    });
+
+    // Set text margins equivalent to tonc's tte_set_margins(8, 128, 232, 160).
+    gba.text.setMargins(8, 128, 232, 160);
+
     const metroid = obj.allocate();
     metroid.* = .{
         .affine_mode = .affine,
@@ -41,9 +49,18 @@ export fn main() void {
 
     obj.update(128);
 
+    const fmt = "#{{P:8,136}}P = | {X:0>4}\t{X:0>4} |\n    | {X:0>4}\t{X:0>4} |\nhello";
+
     while (true) {
         display.naiveVSync();
-
         _ = input.poll();
+
+        const aff = metroid.getAffine();
+        gba.text.printf(fmt, .{
+            @as(u16, @bitCast(aff.pa.raw())),
+            @as(u16, @bitCast(aff.pb.raw())),
+            @as(u16, @bitCast(aff.pc.raw())),
+            @as(u16, @bitCast(aff.pd.raw())),
+        });
     }
 }

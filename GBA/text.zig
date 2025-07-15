@@ -4,6 +4,7 @@ const bg = gba.bg;
 const Color = gba.Color;
 const display = gba.display;
 const bios = gba.bios;
+const surface = @import("surface.zig");
 
 /// Classic convenience initialiser targeting the global default context.
 pub fn initSeDefault(bg_number: i32, bg_control: bg.Control) void {
@@ -51,6 +52,20 @@ pub fn write(text: []const u8) void {
 }
 
 // ------------------------------------------------------------
+// Minimal printf-style formatter (integer-only, like iprintf)
+// ------------------------------------------------------------
+
+/// Format the given `fmt` string with `std.fmt` and draw the result using the
+/// currently active text backend (whatever was set up with `initSeDefault`,
+/// `initChr4cDefault`, etc.). The implementation keeps a 256-byte stack buffer
+/// so it brings in no allocator and mirrors libtonc’s lightweight `iprintf`.
+pub fn printf(comptime fmt: []const u8, args: anytype) void {
+    var buf: [256]u8 = undefined; // increase if you need longer lines
+    const slice = std.fmt.bufPrint(&buf, fmt, args) catch return;
+    write(slice);
+}
+
+// ------------------------------------------------------------
 // Generic text-engine context & backend abstraction
 // ------------------------------------------------------------
 
@@ -63,6 +78,9 @@ pub const TextContext = struct {
     char_block: u5 = 0,
     screen_block: u5 = 0,
 
+    // The surface we are drawing to.
+    surface: surface.Surface = .{},
+
     // Font currently in use.
     font: *const Font = &sys8_font,
 
@@ -72,6 +90,15 @@ pub const TextContext = struct {
 
     // Pointer to a backend-specific glyph renderer. If null, nothing is drawn.
     draw_glyph: ?*const fn (*TextContext, u8) void = null,
+
+    // Saved cursor position for Ps/Pr commands.
+    saved_x: u16 = 0,
+    saved_y: u16 = 0,
+    // Margin rectangle for text rendering (defaults to full screen).
+    margin_left: u16 = 0,
+    margin_top: u16 = 0,
+    margin_right: u16 = gba.screen_width,
+    margin_bottom: u16 = gba.screen_height,
 };
 
 /// Global default context used by the classic convenience wrappers.
@@ -83,9 +110,96 @@ var default_ctx = TextContext{};
 
 // (Former global state is now stored per-context.)
 
+fn octup(val: u4) u32 {
+    const v: u32 = val;
+    return v * 0x11111111;
+}
+
+fn chr4Lmask(left: u16) u32 {
+    return @as(u32, 0xFFFFFFFF) << @as(u5, @intCast((left & 7) * 4));
+}
+
+fn chr4Rmask(right: u16) u32 {
+    // Equivalent to C's `(-right & 7)`
+    return @as(u32, 0xFFFFFFFF) >> @as(u5, @intCast(((~right + 1) & 7) * 4));
+}
+
+fn chr4cColset(dstD: [*]volatile u32, left_rem: u16, right_rem: u16, height: u16, clr: u32) void {
+    const mask = chr4Lmask(left_rem) & chr4Rmask(right_rem);
+    const final_clr = clr & mask;
+    var i: u16 = 0;
+    while (i < height) : (i += 1) {
+        dstD[i] = (dstD[i] & ~mask) | final_clr;
+    }
+}
+
 fn newLineCtx(ctx: *TextContext) void {
-    ctx.cursor_x = 0;
+    ctx.cursor_x = ctx.margin_left;
     ctx.cursor_y += @as(u16, ctx.font.cell_h);
+    if (ctx.cursor_y >= ctx.margin_bottom) {
+        ctx.cursor_y = ctx.margin_top;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Erase helpers – clear the visible text area for the current backend
+// ---------------------------------------------------------------------------
+
+fn eraseScreenCtx(ctx: *TextContext) void {
+    if (ctx.draw_glyph == &chr4cDrawGlyph) {
+        const left = ctx.margin_left;
+        const top = ctx.margin_top;
+        const right = ctx.margin_right;
+        const bottom = ctx.margin_bottom;
+
+        if (left >= right or top >= bottom) return;
+
+        const height = bottom - top;
+        const clr = octup(0);
+
+        const srf = &ctx.surface;
+        const base_addr = @intFromPtr(srf.data orelse return);
+        const pitch_bytes = srf.pitch;
+
+        const x_start_rem = left & 7;
+        const x_end_rem = right & 7;
+
+        var dst_addr = base_addr + (left / 8 * pitch_bytes);
+        var dst_ptr: [*]volatile u32 = @ptrFromInt(dst_addr);
+
+        if (((left / 8) * 8) == (((right - 1) / 8) * 8)) {
+            chr4cColset(dst_ptr[top..], x_start_rem, x_end_rem, height, clr);
+            return;
+        }
+
+        chr4cColset(dst_ptr[top..], x_start_rem, 8, height, clr);
+        dst_addr += pitch_bytes;
+
+        var ix = (left + 7) & 0xFFF8;
+        while (ix < (right & 0xFFF8)) : (ix += 8) {
+            dst_ptr = @ptrFromInt(dst_addr);
+            chr4cColset(dst_ptr[top..], 0, 8, height, clr);
+            dst_addr += pitch_bytes;
+        }
+
+        dst_ptr = @ptrFromInt(dst_addr);
+        chr4cColset(dst_ptr[top..], 0, x_end_rem, height, clr);
+    } else {
+        // se backend – reset tile map entries to blank glyph
+        const map_block = &bg.screen_block_ram[ctx.screen_block];
+        var ei: usize = 0;
+        while (ei < 1024) : (ei += 1) {
+            map_block.*[ei] = .{
+                .tile_index = @intCast(ctx.tile_start),
+                .flip = .{},
+                .palette_index = ctx.palette_bank,
+            };
+        }
+    }
+
+    // Reset cursor to origin after erase, consistent with TONC behaviour.
+    ctx.cursor_x = ctx.margin_left;
+    ctx.cursor_y = ctx.margin_top;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,28 +230,155 @@ fn seDrawGlyph(ctx: *TextContext, ascii: u8) void {
 /// Parse the very small subset of control codes we care about.
 /// Currently only "#{P:x,y}" is handled.
 fn parseControlCtx(ctx: *TextContext, code: []const u8) void {
-    // Expect format #{P:NN,NN}
-    if (code.len < 4) return;
-    if (code[2] != 'P' or code[3] != ':') return;
+    // code is expected to start with "#{" and end with '}', but the slice
+    // we receive already includes both. We begin parsing after the "#{".
+    // Extract inner portion without the leading "#{" and trailing "}".
+    if (code.len < 4) return; // needs at least "#{x}"
 
-    var j: usize = 4;
-    var x: u16 = 0;
-    while (j < code.len and std.ascii.isDigit(code[j])) : (j += 1) {
-        x = x * 10 + (code[j] - '0');
+    const inner = code[2 .. code.len - 1];
+
+    var start: usize = 0;
+    while (start < inner.len) {
+        // find ';' separator to isolate a single token
+        var end: usize = start;
+        while (end < inner.len and inner[end] != ';') : (end += 1) {}
+
+        const tok = inner[start..end];
+
+        if (tok.len > 0) {
+            const cmd = tok[0];
+            switch (cmd) {
+                // Absolute/relative positioning handles
+                'P' => {
+                    if (tok.len == 1) {
+                        // #{P} – go to margin top-left (0,0 for now)
+                        ctx.cursor_x = ctx.margin_left;
+                        ctx.cursor_y = ctx.margin_top;
+                    } else if (tok.len >= 2 and tok[1] == 's') {
+                        // #{Ps} – save current position
+                        ctx.saved_x = ctx.cursor_x;
+                        ctx.saved_y = ctx.cursor_y;
+                    } else if (tok.len >= 2 and tok[1] == 'r') {
+                        // #{Pr} – restore position
+                        ctx.cursor_x = ctx.saved_x;
+                        ctx.cursor_y = ctx.saved_y;
+                    } else if (tok.len >= 2 and tok[1] == ':') {
+                        // #{P:x,y}
+                        var idx: usize = 2;
+                        var x_val: u32 = 0;
+                        while (idx < tok.len and std.ascii.isDigit(tok[idx])) : (idx += 1) {
+                            x_val = x_val * 10 + (tok[idx] - '0');
+                        }
+                        ctx.cursor_x = @intCast(x_val);
+
+                        if (idx < tok.len and tok[idx] == ',') {
+                            idx += 1;
+                            var y_val: u32 = 0;
+                            while (idx < tok.len and std.ascii.isDigit(tok[idx])) : (idx += 1) {
+                                y_val = y_val * 10 + (tok[idx] - '0');
+                            }
+                            ctx.cursor_y = @intCast(y_val);
+                        }
+                    }
+                },
+                'X' => {
+                    if (tok.len == 1) {
+                        ctx.cursor_x = ctx.margin_left;
+                    } else if (tok[1] == ':') {
+                        const val = parseUnsigned(tok[2..]);
+                        ctx.cursor_x = @intCast(val);
+                    }
+                },
+                'Y' => {
+                    if (tok.len == 1) {
+                        ctx.cursor_y = ctx.margin_top;
+                    } else if (tok[1] == ':') {
+                        const val = parseUnsigned(tok[2..]);
+                        ctx.cursor_y = @intCast(val);
+                    }
+                },
+                'x' => {
+                    if (tok.len >= 2 and tok[1] == ':') {
+                        const delta = parseSigned(tok[2..]);
+                        var new_x: i32 = @as(i32, ctx.cursor_x);
+                        new_x += delta;
+                        if (new_x < 0) new_x = 0;
+                        ctx.cursor_x = @intCast(new_x);
+                    }
+                },
+                'y' => {
+                    if (tok.len >= 2 and tok[1] == ':') {
+                        const delta = parseSigned(tok[2..]);
+                        var new_y: i32 = @as(i32, ctx.cursor_y);
+                        new_y += delta;
+                        if (new_y < 0) new_y = 0;
+                        ctx.cursor_y = @intCast(new_y);
+                    }
+                },
+                'p' => {
+                    if (tok.len >= 2 and tok[1] == ':') {
+                        var idx: usize = 2;
+                        const dx = parseSignedAdvance(tok, &idx);
+                        var new_x: i32 = @as(i32, ctx.cursor_x) + dx;
+                        if (idx < tok.len and tok[idx] == ',') {
+                            idx += 1;
+                            const dy = parseSignedAdvance(tok, &idx);
+                            var new_y: i32 = @as(i32, ctx.cursor_y) + dy;
+                            if (new_y < 0) new_y = 0;
+                            ctx.cursor_y = @intCast(new_y);
+                        }
+                        if (new_x < 0) new_x = 0;
+                        ctx.cursor_x = @intCast(new_x);
+                    }
+                },
+                'e' => {
+                    // Erase commands. Only implement "es" (erase screen) for now.
+                    if (std.mem.eql(u8, tok, "es")) {
+                        eraseScreenCtx(ctx);
+                    }
+                },
+                else => {},
+            }
+        }
+
+        // Advance to next token (skip ';' if present)
+        start = if (end < inner.len) end + 1 else inner.len;
     }
-    if (j >= code.len or code[j] != ',') return;
-    j += 1; // skip comma
-
-    var y: u16 = 0;
-    while (j < code.len and std.ascii.isDigit(code[j])) : (j += 1) {
-        y = y * 10 + (code[j] - '0');
-    }
-
-    // Update cursor position.
-    ctx.cursor_x = x;
-    ctx.cursor_y = y;
 }
 
+// ------------------------------------------------------------
+// Small helpers for parsing integers within control tokens
+// ------------------------------------------------------------
+
+inline fn parseUnsigned(slice: []const u8) u32 {
+    var val: u32 = 0;
+    for (slice) |c| {
+        if (!std.ascii.isDigit(c)) break;
+        val = val * 10 + (c - '0');
+    }
+    return val;
+}
+
+inline fn parseSigned(slice: []const u8) i32 {
+    var idx: usize = 0;
+    return parseSignedAdvance(slice, &idx);
+}
+
+inline fn parseSignedAdvance(slice: []const u8, idx_ptr: *usize) i32 {
+    var idx: usize = idx_ptr.*;
+    var negative = false;
+    if (idx < slice.len and slice[idx] == '-') {
+        negative = true;
+        idx += 1;
+    }
+    var val: i32 = 0;
+    while (idx < slice.len and std.ascii.isDigit(slice[idx])) : (idx += 1) {
+        val = val * 10 + @as(i32, slice[idx] - '0');
+    }
+    if (negative) val = -val;
+    idx_ptr.* = idx;
+    return val;
+}
 // ------------------------------------------------------------
 // Embedded sys8 font glyphs (96 glyphs * 2 u32 each = 192 u32)
 // ------------------------------------------------------------
@@ -213,7 +454,7 @@ fn initSeCtx(
 
     // Decode screen-entry parameters: tile start index and palette bank.
     const tile_start: u32 = se0 & 0x03FF;
-    const palette_bank: u4 = @as(u4, @intCast((se0 >> 12) & 0xF));
+    const palette_bank: u4 = @intCast((se0 >> 12) & 0xF);
     _ = bupofs;
 
     // Store runtime parameters for other routines and configure BG control.
@@ -260,12 +501,159 @@ fn initSeCtx(
     }
 
     // Reset cursor position.
-    ctx.cursor_x = 0;
-    ctx.cursor_y = 0;
+    ctx.cursor_x = ctx.margin_left;
+    ctx.cursor_y = ctx.margin_top;
 }
 
 // Using BIOS SWI for bit-unpacking is more reliable for correct bit orders;
 // manual conversion pipeline is removed until we get the core path working.
+
+// ---------------------------------------------------------------------------
+// Helper: Plot a 4bpp pixel on a column-major tiled surface (chr4c backend)
+// ---------------------------------------------------------------------------
+fn setPixelChr4c(ctx: *const TextContext, x: u16, y: u16, color: u4) void {
+    // This function's logic is a direct port of the chr4c_plot function
+    // from libtonc's tonc_schr4c.c, which treats VRAM as a series of
+    // vertical strips.
+    const srf = &ctx.surface;
+    const base: *anyopaque = srf.data orelse return;
+    const pitch = srf.pitch;
+
+    const addr: usize = @intFromPtr(base) + (y * 4) + (x / 8 * pitch);
+    const ptr: *volatile u32 = @ptrFromInt(addr);
+
+    const shift = (x % 8) * 4;
+    const mask = @as(u32, 0xF) << @as(u5, @intCast(shift));
+
+    ptr.* = (ptr.* & ~mask) | (@as(u32, color) << @as(u5, @intCast(shift)));
+}
+
+// ---------------------------------------------------------------------------
+// chr4c glyph renderer (1-bpp → 4-bpp column-major tiles)
+// ---------------------------------------------------------------------------
+fn chr4cDrawGlyph(ctx: *TextContext, ascii: u8) void {
+    if (ascii < 32 or ascii > 127) return;
+    const gid: usize = @as(usize, ascii) - ctx.font.char_offset;
+
+    // Only fixed-width sys8 supported for now.
+    if (gid >= ctx.font.char_count) return;
+
+    // Pointer to glyph data: 8 bytes, MSB is leftmost pixel.
+    const glyph_data: [*]const u8 = @ptrCast(ctx.font.data);
+    const glyph = glyph_data[gid * 8 .. gid * 8 + 8];
+
+    // Draw pixels. This version draws an opaque character cell.
+    var row: u16 = 0;
+    while (row < 8) : (row += 1) {
+        const bits: u8 = glyph[row];
+        var col: u16 = 0;
+        while (col < 8) : (col += 1) {
+            const effective_mask: u8 = @as(u8, 0x80) >> @as(u3, @intCast(col & 0x7));
+            const color: u4 = if ((bits & effective_mask) != 0) 1 else 0;
+            // mirror horizontally: destination X is inverted within 8-pixel cell
+            const dst_x = ctx.cursor_x + (7 - col);
+            setPixelChr4c(ctx, dst_x, ctx.cursor_y + row, color);
+        }
+    }
+
+    // Advance cursor.
+    ctx.cursor_x += ctx.font.cell_w;
+}
+
+// ---------------------------------------------------------------------------
+// chr4c backend initialization
+// ---------------------------------------------------------------------------
+fn initChr4cCtx(
+    ctx: *TextContext,
+    bg_number: i32,
+    bg_control: bg.Control,
+    se0: u32,
+    ink_color: Color,
+    bupofs: u32,
+    font: ?*const Font,
+    proc: ?*const fn (*TextContext, u8) void,
+) void {
+    _ = bupofs; // Unused for now.
+
+    const f_ptr: *const Font = if (font) |p| p else &sys8_font;
+
+    // Decode screen-entry parameters.
+    const tile_start: u32 = se0 & 0x03FF;
+    const palette_bank: u4 = @intCast((se0 >> 12) & 0xF);
+
+    ctx.font = f_ptr;
+    ctx.char_block = bg_control.tile_base_block;
+    ctx.screen_block = bg_control.screen_base_block;
+    ctx.tile_start = tile_start;
+    ctx.palette_bank = palette_bank;
+    ctx.draw_glyph = if (proc) |p| p else &chr4cDrawGlyph;
+
+    // Initialize the surface for this context.
+    const data_ptr: *anyopaque = @volatileCast(&bg.tile_ram[bg_control.tile_base_block][0]);
+    const pal_ptr: [*]u16 = @ptrCast(&bg.palette.banks[palette_bank]);
+    ctx.surface.init(.chr4c, data_ptr, gba.screen_width, gba.screen_height, 4, pal_ptr);
+
+    // Apply BG control register.
+    var final_bg_control = bg_control;
+    final_bg_control.tile_map_size.normal = .@"32x32";
+    bg.ctrl[@intCast(bg_number)] = final_bg_control;
+
+    // Prepare palette: index 1 = ink.
+    bg.palette.banks[palette_bank][1] = ink_color;
+
+    // Prepare tile map (column-major layout) only for the visible 30×20 area.
+    const map_block = &bg.screen_block_ram[bg_control.screen_base_block];
+    const width_tiles: usize = gba.screen_width / 8; // 240px → 30 tiles (X axis)
+    const height_tiles: usize = gba.screen_height / 8; // 160px → 20 tiles (Y axis)
+
+    // For a 240x160 screen, the vertical stride between tile columns is 20 tiles.
+    const stride_tiles: usize = 20;
+
+    var iy: usize = 0;
+    while (iy < height_tiles) : (iy += 1) {
+        var ix: usize = 0;
+        while (ix < width_tiles) : (ix += 1) {
+            const entry_index: usize = iy * 32 + ix; // screen-block row-major index (row stride 32)
+            map_block.*[entry_index] = .{
+                .tile_index = @intCast(tile_start + ix * stride_tiles + iy), // column-major tile index
+                .flip = .{},
+                .palette_index = palette_bank,
+            };
+        }
+    }
+
+    // This mode emulates a bitmap, so we only set up the tile map to create a
+    // linear address space. We do not pre-load font glyphs or clear tile
+    // memory here; that is handled by the glyph renderer on-the-fly.
+
+    // Reset cursor.
+    ctx.cursor_x = ctx.margin_left;
+    ctx.cursor_y = ctx.margin_top;
+}
+
+/// Classic convenience initialiser for chr4c backend targeting the global default context.
+pub fn initChr4cDefault(bg_number: i32, bg_control: bg.Control) void {
+    // Use palette bank 15, tile_start 0.
+    initChr4cCtx(&default_ctx, bg_number, bg_control, 0xF000, Color.yellow, 0, &sys8_font, null);
+}
+
+// ------------------------------------------------------------
+// Margin management helpers (tte_set_margins equivalent)
+// ------------------------------------------------------------
+
+pub fn setMarginsCtx(ctx: *TextContext, left: u16, top: u16, right: u16, bottom: u16) void {
+    ctx.margin_left = left;
+    ctx.margin_top = top;
+    ctx.margin_right = right;
+    ctx.margin_bottom = bottom;
+    ctx.cursor_x = left;
+    ctx.cursor_y = top;
+}
+
+/// Convenience wrapper that sets margins on the global default context.
+pub fn setMargins(left: u16, top: u16, right: u16, bottom: u16) void {
+    setMarginsCtx(&default_ctx, left, top, right, bottom);
+}
 
 // ---------------------------------------------------------------------------
 // Embedded sys8 font glyphs (96 glyphs * 2 u32 each = 192 u32)
