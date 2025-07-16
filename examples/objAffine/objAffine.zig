@@ -28,13 +28,16 @@ export fn main() void {
     // Set text margins equivalent to tonc's tte_set_margins(8, 128, 232, 160).
     gba.text.setMargins(8, 128, 232, 160);
 
+    var x: i9 = 96;
+    var y: i8 = 32;
+
     const metroid = obj.allocate();
     metroid.* = .{
         .affine_mode = .affine,
         .transform = .{ .affine_index = 0 },
     };
     metroid.setSize(.@"64x64");
-    metroid.setPosition(96, 32);
+    metroid.setPosition(@bitCast(x), @bitCast(y));
     metroid.getAffine().setIdentity();
 
     const shadow_metroid = obj.allocate();
@@ -44,16 +47,23 @@ export fn main() void {
         .palette = 1,
     };
     shadow_metroid.setSize(.@"64x64");
-    shadow_metroid.setPosition(96, 32);
+    shadow_metroid.setPosition(@bitCast(x), @bitCast(y));
     shadow_metroid.getAffine().setIdentity();
 
-    obj.update(128);
-
-    const fmt = "#{{P:8,136}}P = | {X:0>4}\t{X:0>4} |\n    | {X:0>4}\t{X:0>4} |\nhello";
+    const fmt = "#{{P:8,136}}P = | {X:0>4}\t{X:0>4} |\n    | {X:0>4}\t{X:0>4} |";
 
     while (true) {
         display.naiveVSync();
         _ = input.poll();
+
+        // move sprite around
+        if (input.isKeyPressed(.select)) {
+            x += 2 * @as(i9, @intCast(input.getAxis(.horizontal).toInt()));
+            y += 2 * @as(i8, @intCast(input.getAxis(.vertical).toInt()));
+
+            metroid.setPosition(@bitCast(x), @bitCast(y));
+            shadow_metroid.setPosition(@bitCast(x), @bitCast(y));
+        }
 
         const aff = metroid.getAffine();
         gba.text.printf(fmt, .{
@@ -62,5 +72,7 @@ export fn main() void {
             @as(u16, @bitCast(aff.pc.raw())),
             @as(u16, @bitCast(aff.pd.raw())),
         });
+
+        obj.update(128);
     }
 }
