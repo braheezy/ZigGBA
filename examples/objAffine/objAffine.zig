@@ -49,26 +49,26 @@ export fn main() void {
     const shadow_metroid = obj.allocate();
     shadow_metroid.* = .{
         .affine_mode = .affine,
-        .transform = .{ .affine_index = 1 }, // Use different affine index
+        .transform = .{ .affine_index = 31 }, // Use different affine index to match tonc
         .palette = 1,
     };
     shadow_metroid.setSize(.@"64x64");
     shadow_metroid.setPosition(@bitCast(x), @bitCast(y));
-    shadow_metroid.getAffine().setIdentity();
+    shadow_metroid.getAffine().setIdentity(); // This matrix is never touched again
 
     const fmt = "#{{P:8,136}}P = | {X:0>4}\t{X:0>4} |\n    | {X:0>4}\t{X:0>4} |";
     var new_state: AffineState = .null;
     // Get references to the affine matrices for the sprites
     var oaff_curr = metroid.getAffine();
-    var oaff_base = &obj.obj_affine_buffer.affine[2]; // Use buffer slot 2 for base
-    var oaff_new = &obj.obj_affine_buffer.affine[3]; // Use buffer slot 3 for new
+    var oaff_base = &obj.obj_affine_buffer.affine[1]; // Use buffer slot 1 for base
+    var oaff_new = &obj.obj_affine_buffer.affine[2]; // Use buffer slot 2 for new
 
     oaff_curr.setIdentity();
     oaff_base.setIdentity();
     oaff_new.setIdentity();
 
-    // Also initialize the shadow's affine matrix
-    shadow_metroid.getAffine().setIdentity();
+    // Initial copy of all affine matrices to OAM (like tonc's oam_copy)
+    obj.updateAffine(32);
 
     while (true) {
         _ = input.poll();
@@ -92,8 +92,6 @@ export fn main() void {
                 // oaff_curr = oaff_base * oaff_new
                 oaff_curr.* = oaff_base.*;
                 affPostMul(oaff_curr, oaff_new);
-                // Apply the same transformation to shadow
-                shadow_metroid.getAffine().* = oaff_curr.*;
             } else {
                 // switch to different transformation type
                 oaff_base.* = oaff_curr.*;
@@ -128,9 +126,8 @@ export fn main() void {
 
         display.naiveVSync();
 
-        obj.update(128);
-
-        obj.updateAffine(128);
+        obj.update(2);
+        obj.updateAffine(3);
 
         gba.text.printf(fmt, .{
             @as(u16, @bitCast(oaff_curr.pa.raw())),
@@ -165,13 +162,7 @@ fn getAffineState() AffineState {
         .null;
 }
 
-fn getAffNew(oaff_new: *obj.Affine) void {
-    const diff = aff_diffs[@intFromEnum(affine_state)];
-    const maybe_key = aff_keys[@intFromEnum(affine_state)];
-    if (maybe_key) |key| {
-        aff_value += if (input.isKeyPressed(key)) diff else -diff;
-    }
-
+fn updateAffMatrixFromState(oaff_new: *obj.Affine) void {
     switch (affine_state) {
         .rotate => {
             // L rotates left, R rotates right
@@ -195,6 +186,16 @@ fn getAffNew(oaff_new: *obj.Affine) void {
         },
         else => {},
     }
+}
+
+fn getAffNew(oaff_new: *obj.Affine) void {
+    const diff = aff_diffs[@intFromEnum(affine_state)];
+    const maybe_key = aff_keys[@intFromEnum(affine_state)];
+    if (maybe_key) |key| {
+        aff_value += if (input.isKeyPressed(key)) diff else -diff;
+    }
+
+    updateAffMatrixFromState(oaff_new);
 }
 
 // Local copy helper if needed by other code
