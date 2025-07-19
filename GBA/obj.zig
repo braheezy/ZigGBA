@@ -228,6 +228,48 @@ pub const Affine = packed struct {
     pub fn setIdentity(self: *Affine) void {
         self.set(I8_8.fromInt(1), .{}, .{}, I8_8.fromInt(1));
     }
+
+    // Helper: convert a raw 8.8 fixed-point integer into an I8_8 value
+    inline fn fromRaw(raw: i32) I8_8 {
+        return @bitCast(@as(i16, @truncate(raw)));
+    }
+
+    // CCW angle. full-circle is 10000h
+    pub fn rotate(self: *Affine, angle: u16) void {
+        const ss = gba.math.sin(angle).raw() >> 4;
+        const cc = gba.math.cos(angle).raw() >> 4;
+        self.pa = fromRaw(cc);
+        self.pb = fromRaw(-ss);
+        self.pc = fromRaw(ss);
+        self.pd = fromRaw(cc);
+    }
+
+    pub fn scaleInv(self: *Affine, wx: i32, wy: i32) void {
+        self.scale((@divTrunc(1 << 24, wx) >> 8), (@divTrunc(1 << 24, wy) >> 8));
+    }
+
+    pub fn scale(self: *Affine, sx: i32, sy: i32) void {
+        self.pa = fromRaw(sx);
+        self.pc = .{};
+        self.pb = .{};
+        self.pd = fromRaw(sy);
+    }
+
+    // Creates a matrix that shears along the X-axis by `hx` (fixed-point 8.8).
+    pub fn shearX(self: *Affine, hx: I8_8) void {
+        self.pa = I8_8.fromInt(1);
+        self.pb = hx;
+        self.pc = .{};
+        self.pd = I8_8.fromInt(1);
+    }
+
+    // Creates a matrix that shears along the Y-axis by `hy` (fixed-point 8.8).
+    pub fn shearY(self: *Affine, hy: I8_8) void {
+        self.pa = I8_8.fromInt(1);
+        self.pb = .{};
+        self.pc = hy;
+        self.pd = I8_8.fromInt(1);
+    }
 };
 
 // TODO: Better abstraction for this, maybe even using the `std.Allocator` API
@@ -245,4 +287,13 @@ pub fn update(count: usize) void {
         oam_entry.* = buf_entry;
     }
     current_attr = 0;
+}
+
+/// Writes affine matrix data from the local buffer to OAM.
+/// Only `count` matrices (each 4x16 bits) are copied.
+/// Should be invoked during VBlank, mirroring tonc's `obj_aff_copy`.
+pub fn updateAffine(count: usize) void {
+    for (obj_affine_buffer.affine[0..count], oam.affine[0..count]) |src, *dst| {
+        dst.* = src;
+    }
 }

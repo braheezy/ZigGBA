@@ -29,6 +29,10 @@ pub const Key = enum {
     L,
 };
 
+pub const Combo = struct {
+    pub const dir = Keys.initMany(&[_]Key{ .left, .right, .up, .down });
+};
+
 pub const Control = packed struct(u16) {
     const Condition = enum(u1) {
         any = 0,
@@ -110,6 +114,12 @@ pub fn isComboHeld(combo: Keys) bool {
 
 pub fn isAnyJustPressed(keys: Keys) bool {
     return curr_input.differenceWith(prev_input).intersectWith(keys).eql(Keys.initEmpty());
+}
+
+pub fn isAnyPressed(keys: Keys) bool {
+    // Return true if the intersection between the requested keys and the
+    // currently pressed keys is *non-empty* (i.e. at least one matches).
+    return !curr_input.intersectWith(keys).eql(Keys.initEmpty());
 }
 
 pub fn isKeyJustPressed(key: Key) bool {
