@@ -6,6 +6,7 @@ const fs = std.fs;
 const mem = std.mem;
 const std = @import("std");
 const lz77 = @import("lz77.zig");
+const tiles = @import("tiles.zig");
 
 pub const ImageConverterError = error{InvalidPixelData};
 
@@ -131,6 +132,46 @@ pub const ImageConverter = struct {
             var data = convert.image;
             data.deinit();
         }
+    }
+
+    pub fn convertTilesImage(comptime bpp: tiles.Bpp, allocator: Allocator, source_path: []const u8, target_path: []const u8, palette_path: ?[]const u8) !void {
+        var palette_colors: [256]tiles.ColorRgb888 = undefined;
+        var palette_slice: []tiles.ColorRgb888 = &[_]tiles.ColorRgb888{};
+        const max_colors = if (bpp == .bpp_4) 16 else 256;
+
+        if (palette_path) |p_path| {
+            var palette_file = try fs.cwd().openFile(p_path, .{});
+            defer palette_file.close();
+
+            const num_colors = @divFloor(try palette_file.getEndPos(), 3);
+
+            for (0..@min(num_colors, max_colors)) |i| {
+                palette_colors[i] = .{
+                    .r = try palette_file.reader().readInt(u8, .little),
+                    .g = try palette_file.reader().readInt(u8, .little),
+                    .b = try palette_file.reader().readInt(u8, .little),
+                };
+            }
+            palette_slice = palette_colors[0..num_colors];
+        } else {
+            // Default palette for jesuMusic: black, white, black
+            palette_colors[0] = .{ .r = 0, .g = 0, .b = 0 }; // Transparency
+            palette_colors[1] = .{ .r = 255, .g = 255, .b = 255 }; // White
+            palette_colors[2] = .{ .r = 0, .g = 0, .b = 0 }; // Black
+            palette_slice = palette_colors[0..3];
+        }
+
+        try tiles.convertSaveImagePath(
+            []tiles.ColorRgb888,
+            source_path,
+            target_path,
+            .{
+                .allocator = allocator,
+                .bpp = bpp,
+                .palette_fn = tiles.getNearestPaletteColor,
+                .palette_ctx = palette_slice,
+            },
+        );
     }
 
     fn openWriteFile(path: []const u8) !fs.File {

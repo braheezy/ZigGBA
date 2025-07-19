@@ -5,7 +5,7 @@ const Timer = gba.timer.Timer;
 const timers = gba.timer.timers;
 const bios = gba.bios;
 
-export const gameHeader linksection(".gbaheader") = gba.initHeader("SECSTIMER", "ASBE", "00", 0);
+export const gameHeader linksection(".gbaheader") = gba.initHeader("SECSTIMER", "ASTE", "00", 0);
 
 fn initMap() void {
     // Init background
@@ -73,11 +73,10 @@ fn initMap() void {
     }
 }
 
-export fn main() void {
+pub export fn main() void {
     initMap();
     display.ctrl.* = display.Control{
         .bg0 = .enable,
-        .obj = .enable,
     };
 
     // Based on the example here: https://gbadev.net/tonc/timers.html
@@ -107,7 +106,7 @@ export fn main() void {
 
         // Convert elapsed seconds to a 2-digit display
         const digits = bios.div(timers[2].counter, 10);
-        bg0_map[33].tile_index = @intCast(digits.division);
+        bg0_map[33].tile_index = @intCast(digits.quotient);
         bg0_map[34].tile_index = @intCast(digits.remainder);
     }
 }

@@ -1,8 +1,8 @@
-# Zig GBA
+# ZigGBA
 
-This is a work in progress SDK for creating Game Boy Advance games using the [Zig](https://ziglang.org/) programming language. Once Zig has a proper package manager, I hope that it would as easy as import the ZigGBA package. Inspired by [TONC GBA tutorial](https://gbadev.net/tonc/)
+ZigGBA is an SDK for creating Game Boy Advance games using the [Zig](https://ziglang.org/) programming language. It is currently in a WIP/experimental state. This repository is a maintained fork of [wendigojaeger/ZigGBA](https://github.com/wendigojaeger/ZigGBA).
 
-## Setup
+Many thanks to [TONC](https://gbadev.net/tonc/) and [GBATEK](https://problemkaputt.de/gbatek.htm), both of which have been major inspirations and resources for this project.
 
 Add to your `build.zig.zon`:
 
@@ -57,10 +57,14 @@ To build, simply use Zig's integrated build system
 zig build
 ```
 
-## First example running in a emulator
+ZigGBA's `zig build` will write example ROMs to `zig-out/bin/`. These are files with a `*.gba` extension which can be run on a GBA using special hardware, or which can run in emulators such as [mGBA](https://github.com/mgba-emu/mgba), [Mesen](https://github.com/SourMesen/Mesen2/), [no$gba](https://problemkaputt.de/gba.htm), and [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance).
+
+## Showcase
+
+First example running on an emulator:
 
 ![First example emulator image](docs/images/FirstExampleEmulator.png)
 
-## First example running on real hardware
+First example running on real hardware:
 
 ![First example real hardware image](docs/images/FirstExampleRealHardware.png)

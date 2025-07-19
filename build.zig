@@ -56,13 +56,13 @@ pub fn build(b: *std.Build) void {
     );
 
     // Mode 4 Flip
-    const mode4flip = addGBAExecutable(
+    const mode4flip = gba.addGBAExecutable(
         b,
         gba_mod,
         "mode4flip",
         "examples/mode4flip/mode4flip.zig",
     );
-    convertMode4Images(mode4flip, target, &[_]ImageSourceTarget{
+    gba.convertMode4Images(mode4flip, target, &[_]gba.ImageSourceTarget{
         .{
             .source = "examples/mode4flip/front.bmp",
             .target = "examples/mode4flip/front.agi",
@@ -106,10 +106,19 @@ pub fn build(b: *std.Build) void {
         "objDemo",
         "examples/objDemo/objDemo.zig",
     );
-    // objDemo.addCSourceFile(.{
-    //     .file = .{ .src_path = .{ .owner = b, .sub_path = "examples/objDemo/metroid_sprite_data.c" } },
-    //     .flags = &[_][]const u8{"-std=c99"},
-    // });
+
+    // Music example (Jesu, Joy of Man's Desiring)
+    const jesuMusic = gba.addGBAExecutable(b, gba_mod, "jesuMusic", "examples/jesuMusic/jesuMusic.zig");
+    const converter = gba.getImageConverter(b, target);
+    const run_converter = b.addRunArtifact(converter);
+    run_converter.addArgs(&[_][]const u8{
+        "tiles",
+        "examples/jesuMusic/charset.png",
+        "examples/jesuMusic/charset.bin",
+        "--bpp",
+        "4",
+    });
+    jesuMusic.step.dependOn(&run_converter.step);
 
     // tileDemo, TODO: Use tileset, tile and palette created by the build system
     _ = addGBAExecutable(
@@ -118,10 +127,6 @@ pub fn build(b: *std.Build) void {
         "tileDemo",
         "examples/tileDemo/tileDemo.zig",
     );
-    // tileDemo.addCSourceFile(.{
-    //     .file = .{ .src_path = .{ .owner = b, .sub_path = "examples/tileDemo/brin.c" } },
-    //     .flags = &[_][]const u8{"-std=c99"},
-    // });
 
     // screenBlock
     _ = addGBAExecutable(
@@ -138,10 +143,6 @@ pub fn build(b: *std.Build) void {
         "charBlock",
         "examples/charBlock/charBlock.zig",
     );
-    // charBlock.addCSourceFile(.{
-    //     .file = .{ .src_path = .{.owner = b, .sub_path = "examples/charBlock/cbb_ids.c" } },
-    //     .flags = &[_][]const u8{"-std=c99"},
-    // });
 
     // objAffine
     _ = addGBAExecutable(
@@ -150,10 +151,6 @@ pub fn build(b: *std.Build) void {
         "objAffine",
         "examples/objAffine/objAffine.zig",
     );
-    // objAffine.addCSourceFile(.{
-    //     .file = .{ .src_path = .{ .owner = b, .sub_path = "examples/objAffine/metr.c" } },
-    //     .flags = &[_][]const u8{"-std=c99"},
-    // });
 
     // text
     _ = addGBAExecutable(

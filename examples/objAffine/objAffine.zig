@@ -14,7 +14,7 @@ var aff_value: i32 = 0;
 const aff_diffs = [_]i32{ 0, 128, 4, 4, 4, 4 };
 const aff_keys = [_]?input.Key{ null, .L, .select, .select, .right, .up };
 
-export fn main() void {
+pub export fn main() void {
     display.ctrl.* = .{
         .obj_mapping = .one_dimension,
         .bg0 = .enable,
