@@ -1,9 +1,9 @@
 const std = @import("std");
-pub const GBABuilder = @import("GBA/builder.zig");
+pub const gba = @import("src/build/build.zig");
 
-pub const addGBAExecutable = GBABuilder.addGBAExecutable;
-pub const convertMode4Images = GBABuilder.convertMode4Images;
-pub const ImageSourceTarget = GBABuilder.ImageSourceTarget;
+pub const addGBAExecutable = gba.addGBAExecutable;
+pub const convertMode4Images = gba.convertMode4Images;
+pub const ImageSourceTarget = gba.ImageSourceTarget;
 
 const gba_thumb_target_query = blk: {
     var target = std.Target.Query{
@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const gba_mod = b.addModule("gba", .{
-        .root_source_file = b.path("GBA/gba.zig"),
+        .root_source_file = b.path("src/gba/gba.zig"),
         .target = b.resolveTargetQuery(gba_thumb_target_query),
         .optimize = optimize,
     });
@@ -82,12 +82,12 @@ pub fn build(b: *std.Build) void {
     );
     convertMode4Images(mode4fliplz, target, &[_]ImageSourceTarget{
         .{
-            .source = "examples/mode4flip/front.bmp",
-            .target = "examples/mode4flip/front.lz",
+            .source = "examples/mode4fliplz/front.bmp",
+            .target = "examples/mode4fliplz/front.lz",
         },
         .{
-            .source = "examples/mode4flip/back.bmp",
-            .target = "examples/mode4flip/back.lz",
+            .source = "examples/mode4fliplz/back.bmp",
+            .target = "examples/mode4fliplz/back.lz",
         },
     }, "examples/mode4fliplz/mode4fliplz.agp", true);
 

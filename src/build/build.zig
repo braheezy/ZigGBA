@@ -1,5 +1,5 @@
 const std = @import("std");
-const ImageConverter = @import("assetconverter/image_converter.zig").ImageConverter;
+const ImageConverter = @import("image_converter.zig").ImageConverter;
 const ArrayList = std.ArrayList;
 const FixedBufferAllocator = std.heap.FixedBufferAllocator;
 const Step = std.Build.Step;
@@ -7,19 +7,19 @@ const builtin = std.builtin;
 const fmt = std.fmt;
 const fs = std.fs;
 
-pub const ImageSourceTarget = @import("assetconverter/image_converter.zig").ImageSourceTarget;
+pub const ImageSourceTarget = @import("image_converter.zig").ImageSourceTarget;
 
 const gba_linker_script = libRoot() ++ "/gba.ld";
 const gba_lib_file = libRoot() ++ "/gba.zig";
 
 // Embed the contents so we can emit them into the build directory regardless of the package's location.
-const crt0_contents = @embedFile("gba_crt0.s");
+const crt0_contents = @embedFile("crt0.s");
 const ld_contents = @embedFile("gba.ld");
-const gba_start_zig_contents = @embedFile("gba_start.zig");
-const asset_converter_contents = @embedFile("assetconverter/main.zig");
-const image_converter_contents = @embedFile("assetconverter/image_converter.zig");
-const lz77_contents = @embedFile("assetconverter/lz77.zig");
-const color_contents = @embedFile("color.zig");
+const gba_start_zig_contents = @embedFile("../gba/start.zig");
+const asset_converter_contents = @embedFile("main.zig");
+const image_converter_contents = @embedFile("image_converter.zig");
+const lz77_contents = @embedFile("lz77.zig");
+const color_contents = @embedFile("../gba/color.zig");
 
 var is_debug: ?bool = null;
 var use_gdb_option: ?bool = null;
@@ -84,8 +84,8 @@ pub fn addGBAExecutable(
     // Generate the linker script and crt0 assembly inside the build directory.
     const write_step = b.addWriteFiles();
     const ld_path = write_step.add("gba.ld", ld_contents);
-    const crt0_path = write_step.add("gba_crt0.s", crt0_contents);
-    const gba_start_zig_path = write_step.add("gba_start.zig", gba_start_zig_contents);
+    const crt0_path = write_step.add("crt0.s", crt0_contents);
+    const gba_start_zig_path = write_step.add("start.zig", gba_start_zig_contents);
 
     const start_module = b.createModule(.{
         .root_source_file = gba_start_zig_path,
@@ -133,10 +133,10 @@ const Mode4ConvertStep = struct {
 
     pub fn init(b: *std.Build, target: std.Build.ResolvedTarget, images: []const ImageSourceTarget, target_palette_path: []const u8) Mode4ConvertStep {
         const write_step = b.addWriteFiles();
-        const asset_converter_path = write_step.add("assetconverter/main.zig", asset_converter_contents);
+        const asset_converter_path = write_step.add("main.zig", asset_converter_contents);
         const color_path = write_step.add("color.zig", color_contents);
-        _ = write_step.add("assetconverter/lz77.zig", lz77_contents);
-        _ = write_step.add("assetconverter/image_converter.zig", image_converter_contents);
+        _ = write_step.add("lz77.zig", lz77_contents);
+        _ = write_step.add("image_converter.zig", image_converter_contents);
 
         const mod = b.createModule(.{
             .root_source_file = asset_converter_path,
