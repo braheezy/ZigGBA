@@ -56,7 +56,8 @@ export fn main() void {
     shadow_metroid.setPosition(@bitCast(x), @bitCast(y));
     shadow_metroid.getAffine().setIdentity(); // This matrix is never touched again
 
-    const fmt = "#{{P:8,136}}P = | {X:0>4}\t{X:0>4} |\n    | {X:0>4}\t{X:0>4} |";
+    // Erase previous text before redrawing to avoid smearing
+    const fmt = "#{{es;P:8,136}}P = | {X:0>4}\t{X:0>4} |\n      | {X:0>4}\t{X:0>4} |";
     var new_state: AffineState = .null;
     // Get references to the affine matrices for the sprites
     var oaff_curr = metroid.getAffine();

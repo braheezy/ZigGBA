@@ -9,6 +9,12 @@ const sys_glyphs = @import("fonts/sys.zig").glyphs;
 const verdana_glyphs = @import("fonts/verdana.zig").glyphs;
 const verdana_widths = @import("fonts/verdana.zig").widths;
 
+// TTE color attribute indices: ink, shadow, paper, special effects
+const TTE_INK: usize = 0;
+const TTE_SHADOW: usize = 1;
+const TTE_PAPER: usize = 2;
+const TTE_SPECIAL: usize = 3;
+
 /// Classic convenience initialiser targeting the global default context.
 pub fn initSeDefault(bg_number: i32, bg_control: bg.Control) void {
     initSeCtx(&default_ctx, bg_number, bg_control, 0xF000, Color.yellow, 0, &sys_font, null);
@@ -94,6 +100,9 @@ pub const TextContext = struct {
     // Pointer to a backend-specific glyph renderer. If null, nothing is drawn.
     draw_glyph: ?*const fn (*TextContext, u8) void = null,
 
+    // Color attributes for ink, shadow, paper, and special effects.
+    cattr: [4]u16 = .{ 0, 0, 0, 0 },
+
     // Saved cursor position for Ps/Pr commands.
     saved_x: u16 = 0,
     saved_y: u16 = 0,
@@ -138,7 +147,8 @@ fn chr4cColset(dstD: [*]volatile u32, left_rem: u16, right_rem: u16, height: u16
 
 fn newLineCtx(ctx: *TextContext) void {
     ctx.cursor_x = ctx.margin_left;
-    ctx.cursor_y += @as(u16, ctx.font.cell_h);
+    // Advance by font height (not full cell) to avoid off-screen lines
+    ctx.cursor_y += @intCast(ctx.font.char_h);
     if (ctx.cursor_y >= ctx.margin_bottom) {
         ctx.cursor_y = ctx.margin_top;
     }
@@ -158,7 +168,7 @@ fn eraseScreenCtx(ctx: *TextContext) void {
         if (left >= right or top >= bottom) return;
 
         const height = bottom - top;
-        const clr = octup(0);
+        const clr = octup(@intCast(ctx.cattr[TTE_PAPER]));
 
         const srf = &ctx.surface;
         const base_addr = @intFromPtr(srf.data orelse return);
@@ -547,35 +557,74 @@ fn setPixelChr4c(ctx: *const TextContext, x: u16, y: u16, color: u4) void {
 }
 
 // ---------------------------------------------------------------------------
-// chr4c glyph renderer (1-bpp → 4-bpp column-major tiles)
+// chr4c glyph renderer (4-bpp → 4-bpp column-major tiles) with color attributes
 // ---------------------------------------------------------------------------
 fn chr4cDrawGlyph(ctx: *TextContext, ascii: u8) void {
-    if (ascii < 32 or ascii > 127) return;
-    const gid: usize = @as(usize, ascii) - ctx.font.char_offset;
+    // Only ASCII range and valid glyphs
+    if (ascii < @as(u8, @intCast(ctx.font.char_offset)) or ascii >= @as(u8, @intCast(ctx.font.char_offset)) + ctx.font.char_count) return;
+    const gid = @as(usize, ascii) - @as(usize, ctx.font.char_offset);
 
-    // Only fixed-width sys supported for now.
-    if (gid >= ctx.font.char_count) return;
+    const font = ctx.font.*;
+    // Variable-width/height support
+    const charW = if (font.widths) |w| @as(usize, w[gid]) else @as(usize, font.char_w);
+    const charH = if (font.heights) |h| @as(usize, h[gid]) else @as(usize, font.char_h);
 
-    // Pointer to glyph data: 8 bytes, MSB is leftmost pixel.
-    const glyph_data: [*]const u8 = @ptrCast(ctx.font.data);
-    const glyph = glyph_data[gid * 8 .. gid * 8 + 8];
+    // Source glyph data (4bpp packed nibble strips)
+    const raw_data: [*]const u32 = @ptrCast(@alignCast(font.data));
+    const srcP = @as(usize, font.cell_h);
+    var srcD = raw_data + gid * srcP;
 
-    // Draw pixels. This version draws an opaque character cell.
-    var row: u16 = 0;
-    while (row < 8) : (row += 1) {
-        const bits: u8 = glyph[row];
-        var col: u16 = 0;
-        while (col < 8) : (col += 1) {
-            const effective_mask: u8 = @as(u8, 0x80) >> @as(u3, @intCast(col & 0x7));
-            const color: u4 = if ((bits & effective_mask) != 0) 1 else 0;
-            // mirror horizontally: destination X is inverted within 8-pixel cell
-            const dst_x = ctx.cursor_x + (7 - col);
-            setPixelChr4c(ctx, dst_x, ctx.cursor_y + row, color);
+    const srf = &ctx.surface;
+    const base_addr = @intFromPtr(srf.data orelse return);
+    const dstP = @as(usize, srf.pitch) / 4;
+
+    const x0 = @as(usize, ctx.cursor_x);
+    const y0 = @as(usize, ctx.cursor_y);
+    const x_rem = x0 % 8;
+    const lsl: u5 = @intCast(4 * x_rem);
+    const lsr: u5 = @intCast(32 - 4 * x_rem);
+    const right = @as(u32, x_rem + charW);
+
+    const dst_addr = base_addr + y0 * 4 + (x0 / 8) * dstP * 4;
+    var dstD: [*]volatile u32 = @ptrFromInt(dst_addr);
+    var dstL: [*]volatile u32 = undefined;
+
+    const amask: u32 = 0x1111_1111;
+    const ink_idx = @as(u32, ctx.cattr[TTE_INK]);
+    const shade_idx = @as(u32, ctx.cattr[TTE_SHADOW]);
+
+    var iw: usize = 0;
+    while (iw < charW) : (iw += 8) {
+        dstL = dstD;
+        dstD = @ptrFromInt(@intFromPtr(dstD) + dstP * 4);
+        var srcL = srcD;
+        srcD = srcD + @as(usize, srcP);
+
+        var iy: usize = charH;
+        while (iy > 0) : (iy -= 1) {
+        var raw = srcL[0];
+            srcL += 1;
+            var px = raw & amask;
+            raw = (raw >> 1) & amask;
+            var pxmask = px | raw;
+            if (pxmask != 0) {
+                px = px * ink_idx;
+                px += raw * shade_idx;
+                pxmask *= 15;
+
+                // Write left tile portion
+                dstL[0] = (dstL[0] & ~(pxmask << lsl)) | (px << lsl);
+                // Write right tile if glyph spills over
+                if (right > 8) {
+                    dstL[dstP] = (dstL[dstP] & ~(pxmask >> lsr)) | (px >> lsr);
+                }
+            }
+            dstL += 1;
         }
     }
 
-    // Advance cursor.
-    ctx.cursor_x += ctx.font.cell_w;
+    // Advance cursor by glyph width
+    ctx.cursor_x += @intCast(charW);
 }
 
 // ---------------------------------------------------------------------------
@@ -587,6 +636,8 @@ fn initChr4cCtx(
     bg_control: bg.Control,
     se0: u32,
     ink_color: Color,
+    shadow_color: Color,
+    paper_color: Color,
     bupofs: u32,
     font: ?*const Font,
     proc: ?*const fn (*TextContext, u8) void,
@@ -616,8 +667,15 @@ fn initChr4cCtx(
     final_bg_control.tile_map_size.normal = .@"32x32";
     bg.ctrl[@intCast(bg_number)] = final_bg_control;
 
-    // Prepare palette: index 1 = ink.
-    bg.palette.banks[palette_bank][1] = ink_color;
+    // Prepare AGB palette entries and TTE color attributes.
+    ctx.cattr[TTE_PAPER] = @as(u16, 0);
+    ctx.cattr[TTE_INK] = @as(u16, 1);
+    ctx.cattr[TTE_SHADOW] = @as(u16, 2);
+    ctx.cattr[TTE_SPECIAL] = @as(u16, 0);
+    const pal = &bg.palette.banks[palette_bank];
+    pal[ctx.cattr[TTE_PAPER]] = paper_color;
+    pal[ctx.cattr[TTE_INK]] = ink_color;
+    pal[ctx.cattr[TTE_SHADOW]] = shadow_color;
 
     // Prepare tile map (column-major layout) only for the visible 30×20 area.
     const map_block = &bg.screen_block_ram[bg_control.screen_base_block];
@@ -652,7 +710,19 @@ fn initChr4cCtx(
 /// Classic convenience initialiser for chr4c backend targeting the global default context.
 pub fn initChr4cDefault(bg_number: i32, bg_control: bg.Control) void {
     // Use palette bank 15, tile_start 0.
-    initChr4cCtx(&default_ctx, bg_number, bg_control, 0xF000, Color.yellow, 0, &verdana_font, null);
+    // Use palette bank 15, tile_start 0, yellow ink, orange shadow, black paper.
+    initChr4cCtx(
+        &default_ctx,
+        bg_number,
+        bg_control,
+        0xF000,
+        Color.yellow,
+        Color.rgb(31, 16, 0),
+        Color.black,
+        0,
+        &verdana_font,
+        null,
+    );
 }
 
 // ------------------------------------------------------------
