@@ -1,5 +1,6 @@
+//! This module implements runtime APIs for code running on a GBA.
+
 const std = @import("std");
-const root = @import("root");
 const gba = @This();
 
 pub const bg = @import("bg.zig");
@@ -13,18 +14,31 @@ pub const interrupt = @import("interrupt.zig");
 pub const math = @import("math.zig");
 pub const mem = @import("mem.zig");
 pub const obj = @import("obj.zig");
+pub const sound = @import("sound.zig");
 pub const timer = @import("timer.zig");
 pub const text = @import("text.zig");
 pub const utils = @import("utils.zig");
 pub const decompress = @import("decompress.zig");
 
+/// Pointer to EWRAM (external work RAM).
+/// More plentiful than IWRAM, but slower.
 pub const ewram: *volatile [0x20000]u16 = @ptrFromInt(gba.mem.ewram);
+
+/// Pointer to IWRAM (internal work RAM).
+/// Not as large as EWRAM, but faster.
 pub const iwram: *volatile [0x2000]u32 = @ptrFromInt(gba.mem.iwram);
 
+/// Width of the GBA video output in pixels.
 pub const screen_width = 240;
+
+/// Height of the GBA video output in pixels.
 pub const screen_height = 160;
 
+/// Represents the structure and contents of a standard GBA ROM header.
 const Header = extern struct {
+    /// Encodes a relative jump past the end of the header in ARM.
+    /// EA 00 is an unconditional jump without linking.
+    /// 00 2E is an offset. Jump ahead `(0x2E << 2) + 8`, past end of header.
     rom_entry_point: u32 align(1) = 0xEA00002E,
     /// Game will not boot if these values are changed.
     nintendo_logo: [156]u8 align(1) = .{
@@ -44,13 +58,16 @@ const Header = extern struct {
     game_name: [12]u8 align(1) = @splat(0),
     game_code: [4]u8 align(1) = @splat(0),
     maker_code: [2]u8 align(1) = @splat(0),
-    /// Cannot be changed
+    /// Cannot be changed.
     fixed_value: u8 align(1) = 0x96,
     main_unit_code: u8 align(1) = 0x00,
     device_type: u8 align(1) = 0x00,
-    _: [7]u8 align(1) = @splat(0),
+    /// Reserved area.
+    _1: [7]u8 align(1) = @splat(0),
     software_version: u8 align(1) = 0x00,
     complement_check: u8 align(1) = 0x00,
+    /// Reserved area.
+    _2: [2]u8 align(1) = @splat(0),
 };
 
 pub fn initHeader(comptime game_name: []const u8, comptime game_code: []const u8, comptime maker_code: ?[]const u8, comptime software_version: ?u8) Header {
