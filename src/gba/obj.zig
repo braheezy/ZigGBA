@@ -153,13 +153,6 @@ pub const Obj = packed struct {
     tile: TileInfo = .{},
     priority: Priority = .highest,
     palette: u4 = 0,
-    // ------------------------------------------------------------
-    // Padding to reach 4 half-words (8 bytes) the size of a
-    // single OAM entry on hardware. The 4th half-word is unused for
-    // normal sprites but is repurposed by the BIOS/hardware when
-    // the entry belongs to an affine-matrix record.
-    // ------------------------------------------------------------
-    _pad_unused: u16 = 0,
 
     /// Sets size and shape to the appropriate values for the given object size.
     pub fn setSize(self: *Obj, size: Size) void {
