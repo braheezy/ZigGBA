@@ -14,7 +14,7 @@ pub const tiles = @import("tiles.zig");
 pub const ImageSourceTarget = @import("image_converter.zig").ImageSourceTarget;
 
 // Embed the contents so we can emit them into the build directory regardless of the package's location.
-const crt0_contents = @embedFile("../gba/crt0.s");
+const crt0_contents = @embedFile("crt0.s");
 const ld_contents = @embedFile("gba.ld");
 const gba_start_zig_contents = @embedFile("../gba/start.zig");
 const asset_converter_contents = @embedFile("main.zig");
