@@ -100,12 +100,12 @@ pub fn build(b: *std.Build) void {
     );
 
     // Simple OBJ demo, TODO: Use tile and palette data created by the build system
-    _ = addGBAExecutable(
-        b,
-        gba_mod,
-        "objDemo",
-        "examples/objDemo/objDemo.zig",
-    );
+    // _ = addGBAExecutable(
+    //     b,
+    //     gba_mod,
+    //     "objDemo",
+    //     "examples/objDemo/objDemo.zig",
+    // );
 
     // Music example (Jesu, Joy of Man's Desiring)
     const jesuMusic = gba.addGBAExecutable(b, gba_mod, "jesuMusic", "examples/jesuMusic/jesuMusic.zig");
@@ -145,12 +145,12 @@ pub fn build(b: *std.Build) void {
     );
 
     // objAffine
-    _ = addGBAExecutable(
-        b,
-        gba_mod,
-        "objAffine",
-        "examples/objAffine/objAffine.zig",
-    );
+    // _ = addGBAExecutable(
+    //     b,
+    //     gba_mod,
+    //     "objAffine",
+    //     "examples/objAffine/objAffine.zig",
+    // );
 
     // swiVsync example: VBlank-synchronized sprite rotation
     _ = addGBAExecutable(
