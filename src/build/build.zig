@@ -41,12 +41,6 @@ const gba_thumb_target_query = blk: {
     break :blk target;
 };
 
-const gba_arm_target_query = std.Target.Query{
-    .cpu_arch = std.Target.Cpu.Arch.arm,
-    .cpu_model = .{ .explicit = &std.Target.arm.cpu.arm7tdmi },
-    .os_tag = .freestanding,
-};
-
 pub fn getImageConverter(b: *std.Build, target: std.Build.ResolvedTarget) *std.Build.Step.Compile {
     const write_step = b.addWriteFiles();
     const asset_converter_path = write_step.add("main.zig", asset_converter_contents);

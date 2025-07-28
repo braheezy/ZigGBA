@@ -3,9 +3,6 @@ const gba = @import("gba.zig");
 const Enable = gba.utils.Enable;
 const interrupt = @This();
 
-// GBA interrupt vector table address
-const IRQ_VECTOR_ADDR: u32 = 0x03007FFC;
-
 pub const ctrl: *volatile interrupt.Control = @ptrFromInt(gba.mem.io + 0x200);
 const ime: *volatile Enable = @ptrFromInt(gba.mem.io + 0x208);
 
@@ -60,10 +57,6 @@ pub fn init() void {
 
     // Enable global interrupt master switch (IME)
     ime.* = .enable;
-
-    // Note: The interrupt vector is now set up in crt0.s
-    // This ensures the isr_master function is properly installed
-    // at the GBA's expected interrupt vector address
 }
 
 /// Adds or replaces an interrupt handler and enables the corresponding
@@ -79,11 +72,11 @@ pub fn add(flag: Flag, handler: ?*const fn () void) ?*const fn () void {
     switch (flag) {
         .vblank => {
             const dispstat: *volatile u16 = @ptrCast(gba.display.status);
-            dispstat.* |= 0x0008; // bit 3 – VBlank IRQ enable
+            dispstat.* |= 0x0008; // bit 3: VBlank IRQ enable
         },
         .hblank => {
             const dispstat: *volatile u16 = @ptrCast(gba.display.status);
-            dispstat.* |= 0x0010; // bit 4 – HBlank IRQ enable
+            dispstat.* |= 0x0010; // bit 4: HBlank IRQ enable
         },
         else => {},
     }

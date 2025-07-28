@@ -252,7 +252,7 @@ pub fn waitInterrupt(return_type: interrupt.WaitReturn, flags: interrupt.Flags) 
 pub fn waitVBlank() void {
     // TODO: The bios just loads these arguments on the registers and calls IntrWait
     // So this might be better if you're not hand-writing assembly?
-    // call2Return0(.intr_wait, .discard_old_wait_new, interrupt.Flag.vblank);
+    // call2Return0(.intr_wait, .{ .discard_old_wait_new, GBA.InterruptFlags.initOne(.vblank) });
     call0Return0(.vblank_intr_wait);
 }
 
