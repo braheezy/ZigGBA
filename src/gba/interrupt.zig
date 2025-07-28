@@ -57,6 +57,8 @@ pub fn init() void {
 
     // Enable global interrupt master switch (IME)
     ime.* = .enable;
+    // Also enable master in the control register
+    (@constCast(ctrl)).enableMaster();
 }
 
 /// Adds or replaces an interrupt handler and enables the corresponding
@@ -112,15 +114,47 @@ pub const Control = extern struct {
     triggers_bits: u16 align(2),
     /// Active interrupt requests can be read from this register.
     irq_ack_bits: u16 align(2),
-    // No IME here; use global `ime` constant for master enable
+    /// Must be enabled for interrupts specified in `triggers` to activate.
+    /// 0 = disabled, 1 = enabled
+    master_bits: u32 align(4),
 
     /// Enables an individual interrupt source in IE.
     pub fn enableTrigger(self: *volatile Control, flag: Flag) void {
         self.triggers_bits |= @as(u16, 1) << @intFromEnum(flag);
     }
 
-    /// Writes a 1 to IF for the given flag to acknowledge it.
+    /// Disables an individual interrupt source in IE.
+    pub fn disableTrigger(self: *volatile Control, flag: Flag) void {
+        self.triggers_bits &= ~(@as(u16, 1) << @intFromEnum(flag));
+    }
+
+    /// Checks if a specific interrupt is enabled.
+    pub fn isTriggerEnabled(self: *const Control, flag: Flag) bool {
+        return (self.triggers_bits & (@as(u16, 1) << @intFromEnum(flag))) != 0;
+    }
+
+    /// Acknowledges only the given interrupt, without ignoring others.
     pub fn acknowledge(self: *volatile Control, flag: Flag) void {
         self.irq_ack_bits = @as(u16, 1) << @intFromEnum(flag);
+    }
+
+    /// Checks if a specific interrupt is pending.
+    pub fn isPending(self: *const Control, flag: Flag) bool {
+        return (self.irq_ack_bits & (@as(u16, 1) << @intFromEnum(flag))) != 0;
+    }
+
+    /// Enables the master interrupt switch.
+    pub fn enableMaster(self: *volatile Control) void {
+        self.master_bits = 1;
+    }
+
+    /// Disables the master interrupt switch.
+    pub fn disableMaster(self: *volatile Control) void {
+        self.master_bits = 0;
+    }
+
+    /// Checks if the master interrupt switch is enabled.
+    pub fn isMasterEnabled(self: *const Control) bool {
+        return self.master_bits != 0;
     }
 };
