@@ -15,6 +15,7 @@ pub const ImageSourceTarget = @import("image_converter.zig").ImageSourceTarget;
 
 // Embed the contents so we can emit them into the build directory regardless of the package's location.
 const crt0_contents = @embedFile("crt0.s");
+const isr_master_contents = @embedFile("isr_master.s");
 const ld_contents = @embedFile("gba.ld");
 const gba_start_zig_contents = @embedFile("../gba/start.zig");
 const asset_converter_contents = @embedFile("main.zig");
@@ -146,6 +147,7 @@ pub fn addGBAExecutable(
     const write_step = b.addWriteFiles();
     const ld_path = write_step.add("gba.ld", ld_contents);
     const crt0_path = write_step.add("crt0.s", crt0_contents);
+    const isr_path = write_step.add("isr_master.s", isr_master_contents);
     const gba_start_zig_path = write_step.add("start.zig", gba_start_zig_contents);
 
     const start_module = b.createModule(.{
@@ -162,6 +164,7 @@ pub fn addGBAExecutable(
 
     exe.setLinkerScript(ld_path);
     exe.addAssemblyFile(crt0_path);
+    exe.addAssemblyFile(isr_path);
     exe.addObject(start_zig_obj);
 
     if (use_gdb) {

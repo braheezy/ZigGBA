@@ -159,14 +159,27 @@ fn newLineCtx(ctx: *TextContext) void {
 // ---------------------------------------------------------------------------
 
 fn eraseScreenCtx(ctx: *TextContext) void {
+    const left = ctx.margin_left;
+    const top = ctx.margin_top;
+    const right = ctx.margin_right;
+    const bottom = ctx.margin_bottom;
+
+    if (left >= right or top >= bottom) return;
+
+    if (ctx.draw_glyph == bmp16DrawGlyph) {
+        var iy = top;
+        while (iy < bottom) : (iy += 1) {
+            var ix = left;
+            while (ix < right) : (ix += 1) {
+                ctx.surface.setPixel(ix, iy, ctx.cattr[TTE_PAPER]);
+            }
+        }
+        ctx.cursor_x = ctx.margin_left;
+        ctx.cursor_y = ctx.margin_top;
+        return;
+    }
+
     if (ctx.draw_glyph == &chr4cDrawGlyph) {
-        const left = ctx.margin_left;
-        const top = ctx.margin_top;
-        const right = ctx.margin_right;
-        const bottom = ctx.margin_bottom;
-
-        if (left >= right or top >= bottom) return;
-
         const height = bottom - top;
         const clr = octup(@intCast(ctx.cattr[TTE_PAPER]));
 
@@ -279,16 +292,18 @@ fn parseControlCtx(ctx: *TextContext, code: []const u8) void {
                         // #{P:x,y}
                         var idx: usize = 2;
                         var x_val: u32 = 0;
-                        while (idx < tok.len and std.ascii.isDigit(tok[idx])) : (idx += 1) {
+                        while (idx < tok.len and std.ascii.isDigit(tok[idx])) {
                             x_val = x_val * 10 + (tok[idx] - '0');
+                            idx += 1;
                         }
                         ctx.cursor_x = @intCast(x_val);
 
                         if (idx < tok.len and tok[idx] == ',') {
                             idx += 1;
                             var y_val: u32 = 0;
-                            while (idx < tok.len and std.ascii.isDigit(tok[idx])) : (idx += 1) {
+                            while (idx < tok.len and std.ascii.isDigit(tok[idx])) {
                                 y_val = y_val * 10 + (tok[idx] - '0');
+                                idx += 1;
                             }
                             ctx.cursor_y = @intCast(y_val);
                         }
@@ -326,6 +341,20 @@ fn parseControlCtx(ctx: *TextContext, code: []const u8) void {
                         new_y += delta;
                         if (new_y < 0) new_y = 0;
                         ctx.cursor_y = @intCast(new_y);
+                    }
+                },
+                'c' => {
+                    // Color attribute commands: ci, cs, cp, cx
+                    // Example: ci:0x001F (set ink to red)
+                    if (tok.len >= 3 and tok[2] == ':') {
+                        const val = parseColor(tok[3..]);
+                        switch (tok[1]) {
+                            'i' => ctx.cattr[TTE_INK] = @as(u16, @intCast(val)),
+                            's' => ctx.cattr[TTE_SHADOW] = @as(u16, @intCast(val)),
+                            'p' => ctx.cattr[TTE_PAPER] = @as(u16, @intCast(val)),
+                            'x' => ctx.cattr[TTE_SPECIAL] = @as(u16, @intCast(val)),
+                            else => {},
+                        }
                     }
                 },
                 'p' => {
@@ -370,6 +399,27 @@ inline fn parseUnsigned(slice: []const u8) u32 {
         val = val * 10 + (c - '0');
     }
     return val;
+}
+
+/// Parse a colour value in decimal or hexadecimal (with `0x` prefix).
+inline fn parseColor(slice: []const u8) u32 {
+    if (slice.len >= 2 and slice[0] == '0' and (slice[1] == 'x' or slice[1] == 'X')) {
+        var val: u32 = 0;
+        var i: usize = 2;
+        while (i < slice.len) : (i += 1) {
+            const c = slice[i];
+            const digit: u32 = switch (c) {
+                '0'...'9' => @as(u32, c - '0'),
+                'a'...'f' => @as(u32, c - 'a' + 10),
+                'A'...'F' => @as(u32, c - 'A' + 10),
+                else => break,
+            };
+            val = (val << 4) | digit;
+        }
+        return val;
+    } else {
+        return parseUnsigned(slice);
+    }
 }
 
 inline fn parseSigned(slice: []const u8) i32 {
@@ -602,7 +652,7 @@ fn chr4cDrawGlyph(ctx: *TextContext, ascii: u8) void {
 
         var iy: usize = charH;
         while (iy > 0) : (iy -= 1) {
-        var raw = srcL[0];
+            var raw = srcL[0];
             srcL += 1;
             var px = raw & amask;
             raw = (raw >> 1) & amask;
@@ -726,6 +776,94 @@ pub fn initChr4cDefault(bg_number: i32, bg_control: bg.Control) void {
 }
 
 // ------------------------------------------------------------
+// Bmp16 (16-bpp direct color) glyph renderer
+// ------------------------------------------------------------
+fn bmp16DrawGlyph(ctx: *TextContext, ascii: u8) void {
+    // only ASCII range
+    if (ascii < ctx.font.char_offset or ascii >= ctx.font.char_offset + ctx.font.char_count) return;
+
+    const gid = @as(usize, ascii) - @as(usize, ctx.font.char_offset);
+    const font = ctx.font.*;
+
+    const charW = if (font.widths) |w| @as(usize, w[gid]) else @as(usize, font.char_w);
+    const charH = if (font.heights) |h| @as(usize, h[gid]) else @as(usize, font.char_h);
+
+    // 1bpp glyph data
+    const raw_data: [*]const u8 = @ptrCast(font.data);
+    const src_slice: []const u8 = raw_data[gid * font.cell_size .. (gid + 1) * font.cell_size];
+
+    const x0 = @as(usize, ctx.cursor_x);
+    const y0 = @as(usize, ctx.cursor_y);
+
+    var iy: usize = 0;
+    while (iy < charH) : (iy += 1) {
+        var ix: usize = 0;
+        if (font.bpp == 1) {
+            const row_byte: u8 = src_slice[iy];
+            while (ix < charW) : (ix += 1) {
+                const bit = (row_byte >> @as(u3, @intCast(7 - ix))) & 1;
+                if (bit != 0) {
+                    ctx.surface.setPixel(@intCast(x0 + ix), @intCast(y0 + iy), ctx.cattr[TTE_INK]);
+                }
+            }
+        } else if (font.bpp == 4) {
+            // Verdana glyphs are stored as 4-bpp: each 32-bit word encodes one 8-pixel row
+            // (left-most pixel = highest nibble).
+            const bytes_per_row: usize = font.cell_w / 2; // 4 bytes for 8 pixels
+            const row_offset_bytes = iy * bytes_per_row;
+            const row_bytes = src_slice[row_offset_bytes .. row_offset_bytes + 4];
+            const row_val_le: u32 = @as(u32, row_bytes[0]) | (@as(u32, row_bytes[1]) << 8) | (@as(u32, row_bytes[2]) << 16) | (@as(u32, row_bytes[3]) << 24);
+            const row_val = row_val_le;
+
+            while (ix < charW) : (ix += 1) {
+                const shift: u5 = @intCast(ix * 4);
+                const pix_nib: u4 = @intCast((row_val >> shift) & 0xF);
+                if ((pix_nib & 0x1) != 0) {
+                    ctx.surface.setPixel(@intCast(x0 + ix), @intCast(y0 + iy), ctx.cattr[TTE_INK]);
+                }
+            }
+        }
+    }
+
+    // Advance cursor by glyph width
+    ctx.cursor_x += @intCast(charW);
+}
+
+// ------------------------------------------------------------
+// Bmp backend initialization
+// ------------------------------------------------------------
+fn initBmpCtx(
+    ctx: *TextContext,
+    vmode: i32,
+    font: ?*const Font,
+    proc: ?*const fn (*TextContext, u8) void,
+) void {
+    const f_ptr: *const Font = if (font) |p| p else &verdana_font;
+    ctx.font = f_ptr;
+    ctx.draw_glyph = if (proc) |p| p else &bmp16DrawGlyph;
+
+    switch (vmode) {
+        // Mode 4 is 8bpp, not yet supported
+        // case 4 => { ... }
+        5 => {
+            ctx.surface.init(.bmp16, @volatileCast(&display.vram[0]), 160, 128, 16, null);
+            ctx.margin_right = 160;
+            ctx.margin_bottom = 128;
+        },
+        // default is mode 3
+        else => {
+            ctx.surface.init(.bmp16, @volatileCast(&display.vram[0]), 240, 160, 16, null);
+            ctx.margin_right = 240;
+            ctx.margin_bottom = 160;
+        },
+    }
+
+    ctx.cattr[TTE_INK] = 0x001F; // red
+    ctx.cattr[TTE_SHADOW] = 0x021F; // orange
+    ctx.cattr[TTE_PAPER] = 0x0000;
+}
+
+// ------------------------------------------------------------
 // Margin management helpers (tte_set_margins equivalent)
 // ------------------------------------------------------------
 
@@ -741,4 +879,15 @@ pub fn setMarginsCtx(ctx: *TextContext, left: u16, top: u16, right: u16, bottom:
 /// Convenience wrapper that sets margins on the global default context.
 pub fn setMargins(left: u16, top: u16, right: u16, bottom: u16) void {
     setMarginsCtx(&default_ctx, left, top, right, bottom);
+}
+
+/// Convenience wrapper that clears the screen using the global default context.
+pub fn eraseScreen() void {
+    eraseScreenCtx(&default_ctx);
+}
+
+/// Classic convenience initialiser for chr4c backend targeting the global default context.
+pub fn initBmpDefault(vmode: i32) void {
+    initBmpCtx(&default_ctx, vmode, null, null);
+    eraseScreenCtx(&default_ctx);
 }

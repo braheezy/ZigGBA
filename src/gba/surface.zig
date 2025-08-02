@@ -69,6 +69,12 @@ pub const Surface = struct {
             srf.pal_data = p;
         }
     }
+
+    pub fn setPixel(srf: *const Surface, x: u16, y: u16, clr: u16) void {
+        const addr: usize = @intFromPtr(srf.data.?) + y * srf.pitch + x * (srf.bpp / 8);
+        const ptr: *volatile u16 = @ptrFromInt(addr);
+        ptr.* = clr;
+    }
 };
 
 /// Returns the word-aligned number of bytes for a scanline.
