@@ -6,7 +6,7 @@ const gba = @import("gba.zig");
 /// Affine transformation matrices are interleaved with object attributes.
 /// Should only be updated during VBlank, to avoid graphical glitches.
 pub const objects: *align(4) volatile [128]Obj = @ptrFromInt(gba.mem.oam);
-
+pub const palette: *gba.Color.Palette = @ptrFromInt(gba.mem.palette + 0x200);
 /// Set all objects to hidden.
 ///
 /// You likely want to do this upon initialization, if you're enabling objects.

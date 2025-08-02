@@ -167,4 +167,12 @@ pub fn build(b: *std.Build) void {
         "text",
         "examples/text/text.zig",
     );
+
+    // swiDemo
+    _ = addGBAExecutable(
+        b,
+        gba_mod,
+        "swiDemo",
+        "examples/swiDemo/swiDemo.zig",
+    );
 }
