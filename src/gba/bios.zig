@@ -213,6 +213,13 @@ pub const ObjAffineSource = packed struct {
     angle: U8_8,
 };
 
+pub const ObjAffineDest = packed struct {
+    a: I8_8,
+    b: I8_8,
+    c: I8_8,
+    d: I8_8,
+};
+
 pub const BitUnpackArgs = packed struct {
     src_len_bytes: u16,
     src_bit_width: enum(u8) {
@@ -273,8 +280,9 @@ pub fn arctan(x: I2_14) I2_14 {
     return call1Return1(.arctan, x);
 }
 
-pub fn arctan2(x: I2_14, y: I2_14) I2_14 {
-    return call2Return1(.arctan2, x, y);
+pub fn arctan2(x: i16, y: i16) i16 {
+    const res: i16 = @intCast(call2Return1(.arctan2, x, y).toInt());
+    return res;
 }
 
 // TODO: Is there a reasonable way to make this generic over any 16bit type without a type parameter?
@@ -330,6 +338,10 @@ pub fn bgAffineSet(source: []align(4) const volatile BgAffineSource, dest: *vola
 /// the first `obj.Affine` to perform them on.
 pub fn objAffineSet(source: []align(4) const volatile ObjAffineSource, dest: *volatile I8_8) void {
     call4Return0(.obj_affine_set, source, dest, source.len, 8);
+}
+
+pub fn objAffineSet2(source: *align(4) const volatile ObjAffineSource, dest: *volatile ObjAffineDest) void {
+    call4Return0(.obj_affine_set, source, dest, 1, 2);
 }
 
 // TODO: objAffineSet2?
