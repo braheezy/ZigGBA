@@ -1,6 +1,6 @@
 const gba = @import("gba");
 
-export var header linksection(".gbaheader") = gba.initHeader("TEXT", "ATEX", "00", 0);
+export var header linksection(".gbaheader") = gba.initHeader("HELL", "AHEL", "00", 0);
 
 export fn main() void {
     gba.display.ctrl.* = .{

@@ -272,7 +272,7 @@ pub fn divArm(numerator: i32, denominator: i32) DivResult {
     return call2Return3(.div_arm, denominator, numerator);
 }
 
-pub fn sqrt(x: u32) u16 {
+pub fn sqrt(x: i32) u16 {
     return call1Return1(.sqrt, x);
 }
 
@@ -280,9 +280,17 @@ pub fn arctan(x: I2_14) I2_14 {
     return call1Return1(.arctan, x);
 }
 
+/// Return the raw Q2.14 fixed-point result from the BIOS SWI.
 pub fn arctan2(x: i16, y: i16) i16 {
-    const res: i16 = @intCast(call2Return1(.arctan2, x, y).toInt());
-    return res;
+    const assembly = comptime SWI.getAsm(.arctan2);
+    var ret: i16 = undefined;
+    asm volatile (assembly
+        : [ret] "={r0}" (ret),
+        : [r0] "{r0}" (x),
+          [r1] "{r1}" (y),
+        : "r0", "r1", "r2", "r3", "cc"
+    );
+    return ret;
 }
 
 // TODO: Is there a reasonable way to make this generic over any 16bit type without a type parameter?
@@ -436,7 +444,7 @@ fn call1Return1(comptime swi: SWI, r0: anytype) swi.ReturnType() {
     asm volatile (assembly
         : [ret] "={r0}" (ret),
         : [r0] "{r0}" (r0),
-        : "r0"
+        : "r1", "r2", "r3", "cc"
     );
     return ret;
 }
@@ -458,7 +466,7 @@ fn call2Return1(comptime swi: SWI, r0: anytype, r1: anytype) swi.ReturnType() {
         : [ret] "={r0}" (ret),
         : [r0] "{r0}" (r0),
           [r1] "{r1}" (r1),
-        : "r0", "r1"
+        : "r2", "r3", "cc"
     );
     return ret;
 }
@@ -475,6 +483,7 @@ fn call2Return3(comptime swi: SWI, r0: i32, r1: i32) DivResult {
           [abs] "={r3}" (abs),
         : [r0] "{r0}" (r0),
           [r1] "{r1}" (r1),
+        : "r2", "cc"
     );
 
     return .{

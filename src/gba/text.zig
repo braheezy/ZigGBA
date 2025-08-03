@@ -832,6 +832,15 @@ fn bmp16DrawGlyph(ctx: *TextContext, ascii: u8) void {
 // ------------------------------------------------------------
 // Bmp backend initialization
 // ------------------------------------------------------------
+fn initBase(ctx: *TextContext, font: ?*const Font, draw_proc: ?*const fn (*TextContext, u8) void) void {
+    ctx.* = .{}; // Zero out the context to prevent garbage state.
+    ctx.font = if (font) |f| f else &sys_font;
+    ctx.draw_glyph = draw_proc;
+}
+
+// ------------------------------------------------------------
+// Bmp backend initialization
+// ------------------------------------------------------------
 fn initBmpCtx(
     ctx: *TextContext,
     vmode: i32,
@@ -839,11 +848,11 @@ fn initBmpCtx(
     proc: ?*const fn (*TextContext, u8) void,
 ) void {
     const f_ptr: *const Font = if (font) |p| p else &verdana_font;
-    ctx.font = f_ptr;
-    ctx.draw_glyph = if (proc) |p| p else &bmp16DrawGlyph;
+
+    initBase(ctx, f_ptr, if (proc) |p| p else &bmp16DrawGlyph);
 
     switch (vmode) {
-        // Mode 4 is 8bpp, not yet supported
+        // Mode 4 is 8bpp, not yet supported.
         // case 4 => { ... }
         5 => {
             ctx.surface.init(.bmp16, @volatileCast(&display.vram[0]), 160, 128, 16, null);
@@ -852,15 +861,17 @@ fn initBmpCtx(
         },
         // default is mode 3
         else => {
-            ctx.surface.init(.bmp16, @volatileCast(&display.vram[0]), 240, 160, 16, null);
-            ctx.margin_right = 240;
-            ctx.margin_bottom = 160;
+            // Correctly initialize the surface for Mode 3.
+            ctx.surface.init(.bmp16, @volatileCast(&display.vram[0]), gba.screen_width, gba.screen_height, 16, null);
+            ctx.margin_right = gba.screen_width;
+            ctx.margin_bottom = gba.screen_height;
         },
     }
 
-    ctx.cattr[TTE_INK] = 0x001F; // red
-    ctx.cattr[TTE_SHADOW] = 0x021F; // orange
-    ctx.cattr[TTE_PAPER] = 0x0000;
+    // Set default colors, matching tonc.
+    ctx.cattr[TTE_INK] = @bitCast(Color.yellow);
+    ctx.cattr[TTE_SHADOW] = @bitCast(Color.rgb(31, 16, 0)); // orange
+    ctx.cattr[TTE_PAPER] = @bitCast(Color.black);
 }
 
 // ------------------------------------------------------------
@@ -886,7 +897,7 @@ pub fn eraseScreen() void {
     eraseScreenCtx(&default_ctx);
 }
 
-/// Classic convenience initialiser for chr4c backend targeting the global default context.
+/// Classic convenience initialiser for bmp backend targeting the global default context.
 pub fn initBmpDefault(vmode: i32) void {
     initBmpCtx(&default_ctx, vmode, null, null);
     eraseScreenCtx(&default_ctx);

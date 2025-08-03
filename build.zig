@@ -160,12 +160,12 @@ pub fn build(b: *std.Build) void {
         "examples/swiVsync/swiVsync.zig",
     );
 
-    // text
+    // hello
     _ = addGBAExecutable(
         b,
         gba_mod,
-        "text",
-        "examples/text/text.zig",
+        "hello",
+        "examples/hello/hello.zig",
     );
 
     // swiDemo

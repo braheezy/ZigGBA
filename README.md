@@ -43,6 +43,42 @@ pub fn build(b: *std.Build) void {
 
 ```
 
+## Fork
+
+I'm learning GBA development from [Tonc](https://gbadev.net/tonc) and it's so well documented that it's fairly straightforward to add library support for missing features. Development in this fork happens at much greater rate than can be merged upstream. I've made large opinionated changes to things like that build system and I haven't figured out how to cleanly merge upstream.
+
+## Features
+
+It's mostly new demos from Tonc, but sometimes it requires extensive library edits to support:
+
+- `hello`: Basic screen entry text rendering. The `sys` and `verdana` fonts from Tonc are supported. There's basic layout format parsing support.
+  ![hello](./examples/hello/hello.png)
+
+- Updated build system that doesn't use git submodules, as seen above.
+
+- L277 compression when creating image assets, decoded using GBA bios routines.
+
+```bash
+# Images are much smaller
+# Before
+ls -l examples/mode4flip/*agi
+38k examples/mode4flip/back.agi
+38k examples/mode4flip/front.agi
+# After
+ls -l examples/mode4fliplz/*lz
+6.3k examples/mode4fliplz/back.lz
+6.3k examples/mode4fliplz/front.lz
+# Making the rom smaller
+ls -l zig-out/bin/mode4flip*
+78k zig-out/bin/mode4flip.gba
+14k zig-out/bin/mode4fliplz.gba
+```
+
+- Basic interrupt routine behavior and ASM master isr table.
+  ![swivsync](./examples/swiVsync/swi-vsync.gif)
+
+- `chr4c` and `bmp` text render engine support
+
 ## Build
 
 This library uses Zig 0.14.1. To install using [`zigup`](https://github.com/marler8997/zigup):
@@ -68,3 +104,6 @@ First example running on an emulator:
 First example running on real hardware:
 
 ![First example real hardware image](docs/images/FirstExampleRealHardware.png)
+
+To simplify things, we can try drawing only the arctan2 demo. When I do that in the zig, a curve is drawn, but it's not magenta, it's a yellow-brown color, and it's orientated incorrectly. Flipped upside down from the tonc demo. Think deeply about why the screen filling behavior has gone away simply by commenting about the other demos in swiDemo.zig. When the core reason is understood, it should inform on how to fix things.
+it's magenta again but still a flat horizontal line

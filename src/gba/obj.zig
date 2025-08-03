@@ -2,6 +2,7 @@
 
 const gba = @import("gba.zig");
 
+pub const tile_ram: *align(4) volatile [1024]u16 = @ptrFromInt(gba.mem.vram);
 /// Refers to object attributes data in OAM.
 /// Affine transformation matrices are interleaved with object attributes.
 /// Should only be updated during VBlank, to avoid graphical glitches.
