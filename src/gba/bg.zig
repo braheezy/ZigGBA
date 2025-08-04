@@ -125,6 +125,14 @@ pub inline fn screenBlockMap(block: u5) [*]volatile bg.TextScreenEntry {
     return @ptrCast(&screen_block_ram[block]);
 }
 
+pub inline fn screenBlockClearRow(block: u5, row: u5) void {
+    const map = screenBlockMap(block);
+    const row_start_index = @as(usize, row) * 32;
+    // A row is 32 tiles, and each tile is a u16 (2 bytes).
+    // memset32 clears in 4-byte chunks, so we clear 16 u32s (64 bytes).
+    gba.mem.memset32(&map[row_start_index], 0, 16);
+}
+
 /// Copy memory into a screenblock, containing background layer data.
 /// Note that screenblocks and charblocks share the same VRAM.
 /// WARNING: This will not copy memory correctly if the input

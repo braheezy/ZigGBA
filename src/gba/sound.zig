@@ -9,6 +9,27 @@ const Enable = gba.utils.Enable;
 // https://www.gamedev.net/articles/programming/general-and-gameplay-programming/audio-programming-on-the-gameboy-advance-part-1-r1823/
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 
+pub const rates = [_]u16{
+    8013, 7566, 7144, 6742, // C , C#, D , D#
+    6362, 6005, 5666, 5346, // E , F , F#, G
+    5048, 4766, 4499, 4246, // G#, A , A#, B
+};
+
+pub const Note = enum {
+    C,
+    Cis,
+    D,
+    Dis,
+    E,
+    F,
+    Fis,
+    G,
+    Gis,
+    A,
+    Bes,
+    B,
+};
+
 /// Enumeration of direction options for channel volume envelopes.
 /// This is used by both the pulse and noise channel control registers.
 pub const VolumeEnvelopeDirection = enum(u1) {

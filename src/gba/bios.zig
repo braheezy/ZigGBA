@@ -263,6 +263,14 @@ pub fn waitVBlank() void {
     call0Return0(.vblank_intr_wait);
 }
 
+/// Halts the CPU for a specified number of VBlank periods.
+/// This is a convenience function that calls `waitVBlank` in a loop.
+pub fn vBlankIntrDelay(count: u32) void {
+    for (0..count) |_| {
+        gba.display.vSync();
+    }
+}
+
 pub fn div(numerator: i32, denominator: i32) DivResult {
     return call2Return3(.div, numerator, denominator);
 }

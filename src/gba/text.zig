@@ -19,6 +19,22 @@ const TTE_SPECIAL: usize = 3;
 pub fn initSeDefault(bg_number: i32, bg_control: bg.Control) void {
     initSeCtx(&default_ctx, bg_number, bg_control, 0xF000, Color.yellow, 0, &sys_font, null);
 }
+pub fn initSe(
+    bg_number: i32,
+    bg_control: bg.Control,
+    clr: gba.Color,
+) void {
+    initSeCtx(
+        &default_ctx,
+        bg_number,
+        bg_control,
+        0xF000,
+        clr,
+        0,
+        &sys_font,
+        null,
+    );
+}
 
 /// Write a (potentially control-coded) UTF-8 string using the given context.
 /// Only ASCII 32-126 are currently supported.
@@ -236,18 +252,19 @@ fn seDrawGlyph(ctx: *TextContext, ascii: u8) void {
     if (ascii < 32 or ascii > 127) return; // unsupported
 
     const gid: u32 = @as(u32, ascii) - @as(u32, ctx.font.char_offset);
-    const tx: u16 = ctx.cursor_x / @as(u16, ctx.font.cell_w);
-    const ty: u16 = ctx.cursor_y / @as(u16, ctx.font.cell_h);
-    if (tx >= 32 or ty >= 32) return; // out of bounds
+    const tx: u16 = (ctx.cursor_x / @as(u16, ctx.font.cell_w)) & 31;
+    const ty: u16 = (ctx.cursor_y / @as(u16, ctx.font.cell_h)) & 31; // out of bounds
 
     const map_block_ptr: *volatile bg.TextScreenBlock =
         &bg.screen_block_ram[ctx.screen_block];
 
     const entry_index = ty * 32 + tx;
+    // Determine palette index: use ctx.cattr[TTE_SPECIAL] high nibble if set, else default palette_bank
+    const pal_index: u4 = @intCast((ctx.cattr[TTE_SPECIAL] >> 12) & 0xF);
     map_block_ptr.*[entry_index] = .{
         .tile_index = @intCast(ctx.tile_start + gid),
         .flip = .{},
-        .palette_index = ctx.palette_bank,
+        .palette_index = if (pal_index != 0) pal_index else ctx.palette_bank,
     };
 
     ctx.cursor_x += @as(u16, ctx.font.cell_w);
@@ -291,21 +308,13 @@ fn parseControlCtx(ctx: *TextContext, code: []const u8) void {
                     } else if (tok.len >= 2 and tok[1] == ':') {
                         // #{P:x,y}
                         var idx: usize = 2;
-                        var x_val: u32 = 0;
-                        while (idx < tok.len and std.ascii.isDigit(tok[idx])) {
-                            x_val = x_val * 10 + (tok[idx] - '0');
-                            idx += 1;
-                        }
-                        ctx.cursor_x = @intCast(x_val);
+                        const x_signed = parseSignedAdvance(tok, &idx);
+                        ctx.cursor_x = @bitCast(@as(i16, @intCast(x_signed)));
 
                         if (idx < tok.len and tok[idx] == ',') {
                             idx += 1;
-                            var y_val: u32 = 0;
-                            while (idx < tok.len and std.ascii.isDigit(tok[idx])) {
-                                y_val = y_val * 10 + (tok[idx] - '0');
-                                idx += 1;
-                            }
-                            ctx.cursor_y = @intCast(y_val);
+                            const y_signed = parseSignedAdvance(tok, &idx);
+                            ctx.cursor_y = @bitCast(@as(i16, @intCast(y_signed)));
                         }
                     }
                 },

@@ -1,6 +1,8 @@
 const std = @import("std");
 const gba = @import("gba.zig");
 pub const window = @import("window.zig");
+const bios = gba.bios;
+const interrupt = gba.interrupt;
 const Color = gba.Color;
 const display = @This();
 const Enable = gba.utils.Enable;
@@ -141,6 +143,10 @@ pub const vcount: *align(2) const volatile u8 = @ptrFromInt(gba.mem.io + 0x06);
 pub fn naiveVSync() void {
     while (vcount.* >= 160) {} // wait till VDraw
     while (vcount.* < 160) {} // wait till VBlank
+}
+
+pub fn vSync() void {
+    bios.waitInterrupt(.discard_old_wait_new, interrupt.Flags.initMany(&[_]interrupt.Flag{.vblank}));
 }
 
 /// Describes a mosaic effect

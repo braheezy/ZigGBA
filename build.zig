@@ -175,4 +175,12 @@ pub fn build(b: *std.Build) void {
         "swiDemo",
         "examples/swiDemo/swiDemo.zig",
     );
+
+    // sound 1 demo
+    _ = addGBAExecutable(
+        b,
+        gba_mod,
+        "sound1",
+        "examples/soundDemo/soundDemo.zig",
+    );
 }

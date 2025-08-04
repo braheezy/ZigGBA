@@ -75,9 +75,12 @@ ls -l zig-out/bin/mode4flip*
 ```
 
 - Basic interrupt routine behavior and ASM master isr table.
-  ![swivsync](./examples/swiVsync/swi-vsync.gif)
+  ![swi-vsync](./examples/swiVsync/swi-vsync.gif)
 
-- `chr4c` and `bmp` text render engine support
+- BIOS and software interrupt (`swi`) improvements. This shows bitmap text render support
+  ![swi-demo](./examples/swiDemo/swi-demo.png)
+
+- Sound demo, with lots of screen entry text rendering:
 
 ## Build
 

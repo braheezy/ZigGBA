@@ -8,6 +8,9 @@ pub const Color = packed struct(u16) {
     pub const cyan = Color.rgb(0, 31, 31);
     pub const white = Color.rgb(31, 31, 31);
 
+    pub const green = Color.rgb(0, 16, 0);
+    pub const orange = Color.rgb(31, 16, 0);
+
     r: u5 = 0,
     g: u5 = 0,
     b: u5 = 0,
