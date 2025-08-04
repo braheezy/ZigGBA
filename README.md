@@ -47,11 +47,12 @@ pub fn build(b: *std.Build) void {
 
 I'm learning GBA development from [Tonc](https://gbadev.net/tonc) and it's so well documented that it's fairly straightforward to add library support for missing features. Development in this fork happens at much greater rate than can be merged upstream. I've made large opinionated changes to things like that build system and I haven't figured out how to cleanly merge upstream.
 
-## Features
+### Features
 
 It's mostly new demos from Tonc, but sometimes it requires extensive library edits to support:
 
 - `hello`: Basic screen entry text rendering. The `sys` and `verdana` fonts from Tonc are supported. There's basic layout format parsing support.
+  
   ![hello](./examples/hello/hello.png)
 
 - Updated build system that doesn't use git submodules, as seen above.
@@ -75,12 +76,17 @@ ls -l zig-out/bin/mode4flip*
 ```
 
 - Basic interrupt routine behavior and ASM master isr table.
+  
   ![swi-vsync](./examples/swiVsync/swi-vsync.gif)
 
 - BIOS and software interrupt (`swi`) improvements. This shows bitmap text render support
-  ![swi-demo](./examples/swiDemo/swi-demo.png)
+
+  <img width="576" height="371" alt="swi-demo" src="https://github.com/user-attachments/assets/78fba6cb-2237-4ac9-b858-b34747aadf44" />
 
 - Sound demo, with lots of screen entry text rendering:
+
+https://github.com/user-attachments/assets/fd172976-68c3-4222-9f3a-d6ee326c7f89
+
 
 ## Build
 
@@ -110,3 +116,4 @@ First example running on real hardware:
 
 To simplify things, we can try drawing only the arctan2 demo. When I do that in the zig, a curve is drawn, but it's not magenta, it's a yellow-brown color, and it's orientated incorrectly. Flipped upside down from the tonc demo. Think deeply about why the screen filling behavior has gone away simply by commenting about the other demos in swiDemo.zig. When the core reason is understood, it should inform on how to fix things.
 it's magenta again but still a flat horizontal line
+
