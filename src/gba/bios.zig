@@ -508,7 +508,7 @@ fn call3Return0(comptime swi: SWI, r0: anytype, r1: anytype, r2: anytype) void {
         : [r0] "{r0}" (r0),
           [r1] "{r1}" (r1),
           [r2] "{r2}" (r2),
-        : "r0", "r1", "r2"
+        : "r0", "r1", "r2", "r3", "cc"
     );
 }
 
@@ -520,7 +520,7 @@ fn call3Return1(comptime swi: SWI, r0: anytype, r1: anytype, r2: anytype) swi.Re
         : [r0] "{r0}" (r0),
           [r1] "{r1}" (r1),
           [r2] "{r2}" (r2),
-        : "r0", "r1", "r2"
+        : "r0", "r1", "r2", "r3", "cc"
     );
     return ret;
 }

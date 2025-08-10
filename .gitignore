@@ -7,3 +7,5 @@ zig-cache
 *.log
 /zig-out
 *.lz
+*.mp3
+libtonc*

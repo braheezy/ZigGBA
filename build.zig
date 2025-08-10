@@ -183,4 +183,11 @@ pub fn build(b: *std.Build) void {
         "sound1",
         "examples/soundDemo/soundDemo.zig",
     );
+
+    _ = addGBAExecutable(
+        b,
+        gba_mod,
+        "pcmPlay",
+        "examples/pcmPlay/main.zig",
+    );
 }
