@@ -27,7 +27,7 @@ pub const sram = 0x0E000000;
 
 /// Source and destination addresses only use the least significant
 /// 27 bits (for internal memory) or 28 bits (for any memory)
-pub const Dma = packed struct {
+pub const Dma = extern struct {
     pub const DestAddrControl = enum(u2) {
         increment = 0,
         decrement = 1,
@@ -61,16 +61,23 @@ pub const Dma = packed struct {
     pub const Control = packed struct(u32) {
         /// For DMA0-2, only 14 bits are used
         count: u16 = 0,
+        /// Bits 16..20 unused in upper halfword
         _: u5 = 0,
+        /// Bits 21..22
         dest: DestAddrControl = .increment,
+        /// Bits 23..24
         source: SourceAddrControl = .increment,
-        /// Must be false if gamepak_drq is used (DMA3 only)
+        /// Bit 25 (Must be false if gamepak_drq is used (DMA3 only))
         dma_repeat: bool = false,
+        /// Bit 26
         transfer_type: TransferType = .half_word,
-        /// DMA3 only
+        /// Bit 27 (DMA3 only)
         gamepak_drq: Enable = .disable,
+        /// Bits 28..29
         start_timing: StartTiming = .immediate,
+        /// Bit 30
         irq_at_end: Enable = .disable,
+        /// Bit 31
         enabled: Enable = .disable,
     };
 
