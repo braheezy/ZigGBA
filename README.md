@@ -87,6 +87,8 @@ ls -l zig-out/bin/mode4flip*
 
 https://github.com/user-attachments/assets/fd172976-68c3-4222-9f3a-d6ee326c7f89
 
+- DMA-driven DirectSound A demo, streaming an external 8bit PCM file
+
 ## Build
 
 This library uses Zig 0.14.1. To install using [`zigup`](https://github.com/marler8997/zigup):
