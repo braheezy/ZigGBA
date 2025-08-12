@@ -89,6 +89,8 @@ https://github.com/user-attachments/assets/fd172976-68c3-4222-9f3a-d6ee326c7f89
 
 - DMA-driven DirectSound A demo, streaming an external 8bit PCM file
 
+https://github.com/user-attachments/assets/1633de74-0b02-4cf3-834a-dc25dd402f1b
+
 ## Build
 
 This library uses Zig 0.14.1. To install using [`zigup`](https://github.com/marler8997/zigup):
@@ -114,3 +116,4 @@ First example running on an emulator:
 First example running on real hardware:
 
 ![First example real hardware image](docs/images/FirstExampleRealHardware.png)
+
