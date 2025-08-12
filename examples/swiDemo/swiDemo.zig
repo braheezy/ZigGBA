@@ -7,7 +7,7 @@ const math = gba.math;
 
 const std = @import("std");
 
-export const gameHeader linksection(".gbaheader") = gba.initHeader("SWID", "ASTE", "00", 0);
+export const gameHeader linksection(".gbaheader") = gba.initHeader("SWID", "ASWE", "00", 0);
 
 fn divDemo() void {
     var ix: i32 = 1;

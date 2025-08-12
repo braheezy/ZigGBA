@@ -1,6 +1,6 @@
 const gba = @import("gba");
 
-export var header linksection(".gbaheader") = gba.initHeader("PCMDEMO", "PCMD", "00", 0);
+export var header linksection(".gbaheader") = gba.initHeader("PCMDEMO", "APPE", "00", 0);
 
 // External PCM asset (u8 mono @ 11025 Hz). Generate via gen_audio.py in this folder.
 const SAMPLE_RATE: u32 = 11_025;

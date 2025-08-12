@@ -6,7 +6,7 @@ const obj = gba.obj;
 const math = gba.math;
 const metr = @import("metr.zig");
 
-export var header linksection(".gbaheader") = gba.initHeader("SWIVSYNC", "SWVS", "00", 0);
+export var header linksection(".gbaheader") = gba.initHeader("SWIVSYNC", "ASVE", "00", 0);
 
 pub export fn main() void {
     interrupt.init();
