@@ -617,6 +617,33 @@ fn buildExamples(b: *GbaBuild) void {
     });
     mode4flip_pal_step.step.dependOn(&mode4flip_front_step.step);
     mode4flip_pal_step.step.dependOn(&mode4flip_back_step.step);
+
+    var mode4fliplz = b.addExecutable(.{
+        .name = "mode4fliplz",
+        .root_source_file = b.path("examples/mode4fliplz/mode4fliplz.zig"),
+    });
+    var mode4fliplz_pal_step = mode4fliplz.addSaveQuantizedPalettizerPaletteStep(.{
+        .palettizer = mode4flip_pal.pal(),
+        .output_path = "examples/mode4fliplz/mode4fliplz.agp",
+    });
+    const mode4fliplz_front_step = mode4fliplz.addConvertImageBitmap8BppStep(.{
+        .image_path = "examples/mode4fliplz/front.bmp",
+        .output_path = "examples/mode4fliplz/front.lz",
+        .options = .{
+            .palettizer = mode4flip_pal.pal(),
+            .compress_lz77 = true,
+        },
+    });
+    const mode4fliplz_back_step = mode4fliplz.addConvertImageBitmap8BppStep(.{
+        .image_path = "examples/mode4fliplz/back.bmp",
+        .output_path = "examples/mode4fliplz/back.lz",
+        .options = .{
+            .palettizer = mode4flip_pal.pal(),
+            .compress_lz77 = true,
+        },
+    });
+    mode4fliplz_pal_step.step.dependOn(&mode4fliplz_back_step.step);
+    mode4fliplz_pal_step.step.dependOn(&mode4fliplz_front_step.step);
 }
 
 /// Build entry point.
