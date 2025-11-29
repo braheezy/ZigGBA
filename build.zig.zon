@@ -2,18 +2,20 @@
     .name = .ziggba,
     .version = "0.0.0",
     .fingerprint = 0x94ed0cc5e826ab7, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.14.1",
+    .minimum_zig_version = "0.16.0-dev.1262+be4eaed7c",
+    .dependencies = .{
+        .cc_helper = .{
+            .path = "vendor/cc_helper",
+            // .url = "git+https://codeberg.org/xbx/cc_helper.git#1076ea283acb25974346acd467599aeaf832ed01",
+            // .hash = "cc_helper-0.0.1-JfF0JHEqAQDP3PvsaYXbQOjpZthAR5AOTwGDdZebxyRE",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "assets",
         "src",
         "LICENSE",
         "README.md",
-    },
-    .dependencies = .{
-        .zigimg = .{
-            .url = "git+https://github.com/zigimg/zigimg.git#31bd433201d12d6aa700074d751a7db4555cdb0d",
-            .hash = "zigimg-0.1.0-8_eo2qClEgC8dTSiSO6vqGe7mdtIkobGi-Uc4d0Eo7_2",
-        },
     },
 }

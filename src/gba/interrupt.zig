@@ -1,160 +1,215 @@
-const std = @import("std");
+//! This module provides an API for interacting with the GBA's hardware
+//! interrupts.
+
 const gba = @import("gba.zig");
-const Enable = gba.utils.Enable;
-const interrupt = @This();
 
-pub const ctrl: *volatile interrupt.Control = @ptrFromInt(gba.mem.io + 0x200);
-const ime: *volatile Enable = @ptrFromInt(gba.mem.io + 0x208);
+/// Location in EWRAM where the system expects to find an interrupt service
+/// routine (ISR) ARM function pointer.
+/// ZigGBA initializes this at startup to point to `isr_default`.
+/// Don't change this unless you're sure you know what you're doing!
+pub const isr_ptr: *volatile *const fn () callconv(.c) void = (@ptrCast(gba.mem.io.reg_isr_main));
 
-pub const Flag = enum {
-    vblank,
-    hblank,
-    timer_0,
-    timer_1,
-    timer_2,
-    timer_3,
-    serial,
-    dma_0,
-    dma_1,
-    dma_2,
-    dma_3,
-    keypad,
-    gamepak,
+/// Default interrupt service routine, implemented in assembly.
+/// By default, this function is called by hardware in ARM mode to handle
+/// interrupts, and then this function wraps a call to `isr_default_redirect`
+/// within some important ISR bookkeeping.
+///
+/// See `src/gba/isr.s`.
+pub extern fn isr_default() callconv(.c) void;
+
+/// Default stub function which `isr_default_redirect` is initialized to
+/// point to during the startup routine. Does nothing.
+/// Set `isr_default_redirect` to something else to implement your own
+/// interrupt handler.
+pub fn isr_default_redirect_null(_: InterruptFlags) callconv(.c) void {}
+
+/// Pointer to an interrupt handler function called by `isr_default_redirect`.
+/// Set this to something other than `isr_default_redirect_null` to implement
+/// your own interrupt handler.
+pub extern var isr_default_redirect: *const fn (InterruptFlags) callconv(.c) void;
+
+/// Enumeration of hardware interrupts.
+/// See also `InterruptFlags`.
+pub const Interrupt = enum(u4) {
+    vblank = 0x0,
+    hblank = 0x1,
+    vcount = 0x2,
+    timer_0 = 0x3,
+    timer_1 = 0x4,
+    timer_2 = 0x5,
+    timer_3 = 0x6,
+    serial = 0x7,
+    dma_0 = 0x8,
+    dma_1 = 0x9,
+    dma_2 = 0xa,
+    dma_3 = 0xb,
+    keypad = 0xc,
+    gamepak = 0xd,
 };
 
-pub const Flags = std.EnumSet(interrupt.Flag);
+/// Contains a flag for each hardware interrupt type.
+pub const InterruptFlags = packed struct(u16) {
+    /// LCD VBlank interrupt.
+    /// Interrupts occur according to settings specified in REG_DISPSTAT.
+    /// See `gba.display.status.vblank_interrupt`.
+    vblank: bool = false,
+    /// LCD HBlank interrupt.
+    /// Interrupts occur after the HDraw, so that anything executed in an
+    /// HBlank interrupt takes effect in the next line.
+    /// Interrupts occur according to settings specified in REG_DISPSTAT.
+    /// See `gba.display.status.hblank_interrupt`.
+    hblank: bool = false,
+    /// LCD VCounter match interrupt.
+    /// Interrupts occur at the beginning of a scanline.
+    /// Interrupts occur according to settings specified in REG_DISPSTAT.
+    /// See `gba.display.status.vcount_interrupt`.
+    vcount: bool = false,
+    /// Timer 0 counter overflow interrupt.
+    /// Interrupts only occur according to a flag in REG_TM0CNT.
+    /// See `gba.timers[0].ctrl.interrupt`.
+    timer_0: bool = false,
+    /// Timer 1 counter overflow interrupt.
+    /// Interrupts only occur according to a flag in REG_TM1CNT.
+    /// See `gba.timers[1].ctrl.interrupt`.
+    timer_1: bool = false,
+    /// Timer 2 counter overflow interrupt.
+    /// Interrupts only occur according to a flag in REG_TM2CNT.
+    /// See `gba.timers[2].ctrl.interrupt`.
+    timer_2: bool = false,
+    /// Timer 3 counter overflow interrupt.
+    /// Interrupts only occur according to a flag in REG_TM3CNT.
+    /// See `gba.timers[3].ctrl.interrupt`.
+    timer_3: bool = false,
+    /// Serial communication interrupt.
+    /// May require REG_SCCNT.
+    serial: bool = false,
+    /// DMA 0 interrupt.
+    /// Interrupt is raised upon a full transfer being complete.
+    /// Also requires REG_DMA0CNT.
+    /// See `gba.dma[0].ctrl.interrupt`.
+    dma_0: bool = false,
+    /// DMA 1 interrupt.
+    /// Interrupt is raised upon a full transfer being complete.
+    /// Also requires REG_DMA1CNT.
+    /// See `gba.dma[1].ctrl.interrupt`.
+    dma_1: bool = false,
+    /// DMA 2 interrupt.
+    /// Interrupt is raised upon a full transfer being complete.
+    /// Also requires REG_DMA2CNT.
+    /// See `gba.dma[2].ctrl.interrupt`.
+    dma_2: bool = false,
+    /// DMA 3 interrupt.
+    /// Interrupt is raised upon a full transfer being complete.
+    /// Also requires REG_DMA3CNT.
+    /// See `gba.dma[3].ctrl.interrupt`.
+    dma_3: bool = false,
+    /// Keypad interrupt.
+    /// Interrupt is raised according to options specified via the REG_KEYCNT
+    /// register. See `gba.input.interrupt` for an API for interfacing with
+    /// this register.
+    keypad: bool = false,
+    /// Game pak (external IRQ source) interrupt.
+    /// Interrupt is raised when the cartridge is removed from the GBA.
+    gamepak: bool = false,
+    /// Unused bits.
+    _: u2 = 0,
 
-pub const WaitReturn = enum(u32) {
-    return_immediately,
-    discard_old_wait_new,
-};
-
-// ISR table entry - similar to libtonc's IRQ_REC
-pub const IsrEntry = struct {
-    flag: u32, // Interrupt flag bit
-    handler: ?*const fn () void, // Handler function pointer
-};
-
-// Global ISR table - similar to libtonc's __isr_table
-extern var isr_table: [112]u8 align(4); // 14 entries * 8 bytes each
-
-fn table() *[14]IsrEntry {
-    return @ptrCast(&isr_table);
-}
-
-// External function implemented in assembly (src/build/isr_master.s)
-pub extern fn isr_master() callconv(.C) void;
-
-// Initialize the ISR table
-pub fn init() void {
-    // Clear the table
-    for (table()) |*entry| {
-        entry.* = .{ .flag = 0, .handler = null };
+    /// Get the bit associated with a given interrupt.
+    pub fn get(self: InterruptFlags, interrupt: Interrupt) bool {
+        const bits: u16 = @bitCast(self);
+        return ((bits >> @intFromEnum(interrupt)) & 1) != 0;
     }
 
-    // Disable all triggers initially
-    (@constCast(ctrl)).triggers_bits = 0;
-
-    // Enable global interrupt master switch (IME)
-    ime.* = .enable;
-    // Also enable master in the control register
-    (@constCast(ctrl)).enableMaster();
-}
-
-/// Adds or replaces an interrupt handler and enables the corresponding
-/// hardware interrupt sources (similar to tonc's irq_add).
-/// If `handler` is null, only the hardware interrupt is enabled.
-pub fn add(flag: Flag, handler: ?*const fn () void) ?*const fn () void {
-    const old = setHandler(flag, handler);
-
-    // Enable the interrupt in IE register
-    (@constCast(ctrl)).enableTrigger(flag);
-
-    // Some sources need an extra enable in DISPSTAT
-    switch (flag) {
-        .vblank => {
-            const dispstat: *volatile u16 = @ptrCast(gba.display.status);
-            dispstat.* |= 0x0008; // bit 3: VBlank IRQ enable
-        },
-        .hblank => {
-            const dispstat: *volatile u16 = @ptrCast(gba.display.status);
-            dispstat.* |= 0x0010; // bit 4: HBlank IRQ enable
-        },
-        else => {},
+    /// Assign the bit associated with a given interrupt to 1.
+    pub fn set(self: *InterruptFlags, interrupt: Interrupt) void {
+        const bits: u16 = @bitCast(self);
+        self.* = @bitCast(bits | (1 << @intFromEnum(interrupt)));
     }
-    return old;
-}
 
-// Register an interrupt handler
-pub fn setHandler(flag: Flag, handler: ?*const fn () void) ?*const fn () void {
-    const flag_bit = @as(u32, 1) << @intFromEnum(flag);
+    /// Assign the bit associated with a given interrupt to 0.
+    pub fn unset(self: *InterruptFlags, interrupt: Interrupt) void {
+        const bits: u16 = @bitCast(self);
+        self.* = @bitCast(bits & ~(1 << @intFromEnum(interrupt)));
+    }
 
-    // Find existing entry or empty slot
-    var i: usize = 0;
-    while (i < 14 - 1) : (i += 1) {
-        if (table()[i].flag == flag_bit) {
-            const old_handler = table()[i].handler;
-            table()[i].handler = handler;
-            return old_handler;
+    /// Assign the bit associated with a given interrupt to a given value.
+    pub inline fn assign(self: *InterruptFlags, interrupt: Interrupt, value: bool) void {
+        if (value) {
+            self.set(interrupt);
+        } else {
+            self.unset(interrupt);
         }
-        if (table()[i].flag == 0) break;
     }
 
-    // Add new entry
-    if (i < 14 - 1) {
-        table()[i] = .{ .flag = flag_bit, .handler = handler };
+    /// Get a new `InterruptFlags` which has only those flags set which are
+    /// set in both `a` and `b`.
+    pub inline fn andFlags(a: InterruptFlags, b: InterruptFlags) InterruptFlags {
+        const bits_a: u16 = @bitCast(a);
+        const bits_b: u16 = @bitCast(b);
+        return @bitCast(bits_a & bits_b);
     }
 
-    return null;
-}
-
-pub const Control = extern struct {
-    /// When `master` is enabled, the events specified by these flags will trigger an interrupt.
-    /// Stored as raw bits for extern compatibility; use helper functions for safe access.
-    triggers_bits: u16 align(2),
-    /// Active interrupt requests can be read from this register.
-    irq_ack_bits: u16 align(2),
-    /// Must be enabled for interrupts specified in `triggers` to activate.
-    /// 0 = disabled, 1 = enabled
-    master_bits: u32 align(4),
-
-    /// Enables an individual interrupt source in IE.
-    pub fn enableTrigger(self: *volatile Control, flag: Flag) void {
-        self.triggers_bits |= @as(u16, 1) << @intFromEnum(flag);
+    /// Get a new `InterruptFlags` which has only those flags set which are
+    /// set in `a`, in `b`, or both.
+    pub inline fn orFlags(a: InterruptFlags, b: InterruptFlags) InterruptFlags {
+        const bits_a: u16 = @bitCast(a);
+        const bits_b: u16 = @bitCast(b);
+        return @bitCast(bits_a | bits_b);
     }
 
-    /// Disables an individual interrupt source in IE.
-    pub fn disableTrigger(self: *volatile Control, flag: Flag) void {
-        self.triggers_bits &= ~(@as(u16, 1) << @intFromEnum(flag));
-    }
-
-    /// Checks if a specific interrupt is enabled.
-    pub fn isTriggerEnabled(self: *const Control, flag: Flag) bool {
-        return (self.triggers_bits & (@as(u16, 1) << @intFromEnum(flag))) != 0;
-    }
-
-    /// Acknowledges only the given interrupt, without ignoring others.
-    pub fn acknowledge(self: *volatile Control, flag: Flag) void {
-        self.irq_ack_bits = @as(u16, 1) << @intFromEnum(flag);
-    }
-
-    /// Checks if a specific interrupt is pending.
-    pub fn isPending(self: *const Control, flag: Flag) bool {
-        return (self.irq_ack_bits & (@as(u16, 1) << @intFromEnum(flag))) != 0;
-    }
-
-    /// Enables the master interrupt switch.
-    pub fn enableMaster(self: *volatile Control) void {
-        self.master_bits = 1;
-    }
-
-    /// Disables the master interrupt switch.
-    pub fn disableMaster(self: *volatile Control) void {
-        self.master_bits = 0;
-    }
-
-    /// Checks if the master interrupt switch is enabled.
-    pub fn isMasterEnabled(self: *const Control) bool {
-        return self.master_bits != 0;
+    /// Get a new `InterruptFlags` which has only those flags set which are
+    /// set in either `a` or `b`, and not in both.
+    pub inline fn xorFlags(a: InterruptFlags, b: InterruptFlags) InterruptFlags {
+        const bits_a: u16 = @bitCast(a);
+        const bits_b: u16 = @bitCast(b);
+        return @bitCast(bits_a ^ bits_b);
     }
 };
+
+/// Represents the contents of REG_IME.
+pub const Master = packed struct(u32) {
+    /// Master interrupt enable flag.
+    ///
+    /// If this flag is false, then no interrupts will occur, regardless
+    /// of individual per-interrupt enable flags.
+    enable: bool = false,
+    /// Unused bits.
+    _: u31 = 0,
+};
+
+/// Acknowledge an interrupt, by setting the appropriate interrupt flag
+/// in `irq_ack`.
+/// This is the same as calling `irq_ack.set(interrupt)`.
+pub fn acknowledge(interrupt: Interrupt) void {
+    irq_ack.set(interrupt);
+}
+
+/// Interrupt enable flags.
+/// When `master.enable` is set, the events specified by these
+/// flags will trigger an interrupt.
+///
+/// Since interrupts can trigger at any point, `master.enable`
+/// should be unset while clearing flags from this register,
+/// to avoid spurious interrupts.
+///
+/// Corresponds to REG_IE.
+pub const enable: *volatile InterruptFlags = @ptrCast(gba.mem.io.reg_ie);
+
+/// Interrupt request and IRQ acknowledge flags.
+/// Active interrupt requests can be read from this register.
+///
+/// Interrupts must be manually acknowledged by setting one of the
+/// IRQ bits. (The IRQ bit will then be cleared.)
+/// To clear an interrupt, write ONLY that flag to this register.
+/// The `acknowledge` function can help with this.
+///
+/// Corresponds to REG_IF.
+pub const irq_ack: *volatile InterruptFlags = @ptrCast(gba.mem.io.reg_if);
+
+/// Additional IRQ acknowledge flags, to be used with BIOS calls which
+/// require interrupts.
+/// Corresponds to REG_IFBIOS.
+pub const irq_ack_bios: *volatile InterruptFlags = @ptrCast(gba.mem.io.reg_ifbios);
+
+/// Corresponds to REG_IME.
+pub const master: *volatile Master = @ptrCast(gba.mem.io.reg_ime);

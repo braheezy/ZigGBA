@@ -1,41 +1,42 @@
 const gba = @import("gba");
-const input = gba.input;
-const display = gba.display;
-const bg = gba.bg;
 const brin = @import("brin.zig");
 
-export var header linksection(".gbaheader") = gba.initHeader("TILEDEMO", "ATDE", "00", 0);
+export var header linksection(".gbaheader") = gba.Header.init("TILEDEMO", "ATDE", "00", 0);
+
+// Screenblock index is chosen to not overlap with VRAM used by tiles.
+const screenblock_index: u5 = 31;
 
 fn loadData() void {
-    const map_ram: [*]volatile u16 = @ptrFromInt(@intFromPtr(display.vram) + (30 * 2048));
-
-    gba.mem.memcpy32(bg.palette, &brin.pal, brin.pal.len * 2);
-    gba.mem.memcpy32(bg.tile_ram, &brin.tiles, brin.tiles.len * 2);
-    gba.mem.memcpy32(map_ram, &brin.map, brin.map.len * 2);
+    const screenblock = &gba.display.screenblocks[screenblock_index];
+    gba.display.memcpyBackgroundPalette(0, @ptrCast(&brin.pal));
+    gba.display.memcpyBackgroundTiles4Bpp(0, @ptrCast(&brin.tiles));
+    gba.mem.memcpy16(screenblock, &brin.map, brin.map.len);
 }
 
 pub export fn main() void {
     loadData();
-    bg.ctrl[0] = .{
-        .screen_base_block = 30,
-        .tile_map_size = .{ .normal = .@"64x32" },
+    gba.display.bg_ctrl[0] = .{
+        .base_screenblock = screenblock_index,
+        .size = .normal_64x32,
+    };
+    gba.display.bg_scroll[0] = .zero;
+
+    gba.display.ctrl.* = .{
+        .bg0 = true,
     };
 
-    display.ctrl.* = .{
-        .bg0 = .enable,
-    };
-
+    var input: gba.input.KeysState = .{};
     var x: i10 = 192;
     var y: i10 = 64;
 
     while (true) {
-        display.naiveVSync();
+        gba.display.naiveVSync();
 
-        _ = input.poll();
+        input.poll();
 
-        x +%= input.getAxis(.horizontal).toInt();
-        y +%= input.getAxis(.vertical).toInt();
+        x +%= input.getAxisHorizontal();
+        y +%= input.getAxisVertical();
 
-        bg.scroll[0].set(x, y);
+        gba.display.bg_scroll[0] = .init(x, y);
     }
 }

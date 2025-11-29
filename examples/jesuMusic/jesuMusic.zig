@@ -1,12 +1,8 @@
 const gba = @import("gba");
-const Enable = gba.utils.Enable;
 
-export const gameHeader linksection(".gbaheader") = gba.initHeader("JESUMUSIC", "AJME", "00", 0);
+export const gameHeader linksection(".gbaheader") = gba.Header.init("JESUMUSIC", "AJME", "00", 0);
 
-// Must be aligned or else memcpy will copy a byte at a time,
-// and VRAM doesn't like that.
-// https://github.com/Games-by-Mason/SPIRV-Reflect-zig/pull/1#issuecomment-2655358098
-/// File contains tile image data.
+/// File contains 4bpp tile image data.
 const charset_data align(4) = @embedFile("charset.bin").*;
 
 const hex_digits: [16]u8 = .{
@@ -521,7 +517,7 @@ const Track = struct {
     /// This function is called by the Tracker once per frame.
     pub fn update(self: *Track) void {
         var reset_note: bool = false;
-        if (self.hold_time != 0) {
+        if(self.hold_time != 0) {
             self.hold_time -= 1;
         }
         while (self.hold_time == 0) {
@@ -529,7 +525,7 @@ const Track = struct {
             const opcode = self.data[pos];
             const operand = self.data[pos + 1];
             self.position += 2;
-            if (self.position >= self.data.len) {
+            if(self.position >= self.data.len) {
                 self.position = 0;
             }
             switch (opcode) {
@@ -635,143 +631,127 @@ const Tracker = struct {
     }
 };
 
-fn drawBlank(len: u8, pal_index: u4, target: [*]volatile gba.bg.TextScreenEntry) void {
-    const blank_entry = gba.bg.TextScreenEntry{
-        .tile_index = 0x7f,
-        .palette_index = pal_index,
-    };
-    for (0..len) |i| {
-        target[i] = blank_entry;
+/// Draw special space-intentionally-leftl-blank tiles to the background map.
+fn drawBlank(map: gba.display.BackgroundMap, x: u6, y: u6, pal: u4, len: u6) void {
+    for(0..len) |i| {
+        map.set(@intCast(x + i), y, .{ .tile = 0x7f, .palette = pal });
     }
 }
 
-fn drawHex(value: u8, pal_index: u4, target: [*]volatile gba.bg.TextScreenEntry) void {
-    target[0] = gba.bg.TextScreenEntry{
-        .tile_index = hex_digits[value >> 4],
-        .palette_index = pal_index,
-    };
-    target[1] = gba.bg.TextScreenEntry{
-        .tile_index = hex_digits[value & 0xf],
-        .palette_index = pal_index,
-    };
+/// Draw two hexadecimal digits to the background map.
+fn drawHex(map: gba.display.BackgroundMap, x: u6, y: u6, pal: u4, value: u8) void {
+    map.set(x, y, .{ .tile = hex_digits[value >> 4], .palette = pal });
+    map.set(x + 1, y, .{ .tile = hex_digits[value & 0xf], .palette = pal });
 }
 
-fn drawDecimal(value: u8, pal_index: u4, target: [*]volatile gba.bg.TextScreenEntry) void {
-    const blank_entry = gba.bg.TextScreenEntry{
-        .tile_index = 0x7f,
-        .palette_index = pal_index,
-    };
-    if (value < 10) {
-        target[0] = blank_entry;
-        target[1] = blank_entry;
-        target[2] = gba.bg.TextScreenEntry{
-            .tile_index = '0' + value,
-            .palette_index = pal_index,
-        };
+/// Draw an up to 3-digit decimal number to the background map.
+fn drawDecimal(map: gba.display.BackgroundMap, x: u6, y: u6, pal: u4, value: u8) void {
+    if(value < 10) {
+        map.set(x, y, .{ .tile = 0x7f, .palette = pal });
+        map.set(x + 1, y, .{ .tile = 0x7f, .palette = pal });
+        map.set(x + 2, y, .{ .tile = '0' + value, .palette = pal });
     }
-    else if (value < 100) {
+    else if(value < 100) {
         const div10 = gba.bios.div(value, 10);
-        target[0] = blank_entry;
-        target[1] = gba.bg.TextScreenEntry{
-            .tile_index = @intCast('0' + div10.quotient),
-            .palette_index = pal_index,
-        };
-        target[2] = gba.bg.TextScreenEntry{
-            .tile_index = @intCast('0' + div10.remainder),
-            .palette_index = pal_index,
-        };
+        map.set(x, y, .{ .tile = 0x7f, .palette = pal });
+        map.set(x + 1, y, .{
+            .tile = @intCast('0' + div10.quotient),
+            .palette = pal,
+        });
+        map.set(x + 2, y, .{
+            .tile = @intCast('0' + div10.remainder),
+            .palette = pal,
+        });
     }
     else {
         const div100 = gba.bios.div(value, 100);
         const div10 = gba.bios.div(div100.remainder, 10);
-        target[0] = gba.bg.TextScreenEntry{
-            .tile_index = @intCast('0' + div100.quotient),
-            .palette_index = pal_index,
-        };
-        target[1] = gba.bg.TextScreenEntry{
-            .tile_index = @intCast('0' + div10.quotient),
-            .palette_index = pal_index,
-        };
-        target[2] = gba.bg.TextScreenEntry{
-            .tile_index = @intCast('0' + div10.remainder),
-            .palette_index = pal_index,
-        };
+        map.set(x, y, .{
+            .tile = @intCast('0' + div100.quotient),
+            .palette = pal,
+        });
+        map.set(x + 2, y, .{
+            .tile = @intCast('0' + div10.quotient),
+            .palette = pal,
+        });
+        map.set(x + 2, y, .{
+            .tile = @intCast('0' + div10.remainder),
+            .palette = pal,
+        });
     }
 }
 
-fn drawPitch(pitch: u8, pal_index: u4, target: [*]volatile gba.bg.TextScreenEntry) void {
-    if (pitch > pitch_names.len) {
-        target[0] = gba.bg.TextScreenEntry{
-            .tile_index = 'x',
-            .palette_index = pal_index,
-        };
-        drawHex(pitch, pal_index, target + 1);
+/// Draw a note pitch string (e.g. "C-4") to the background map.
+fn drawPitch(map: gba.display.BackgroundMap, x: u6, y: u6, pal: u4, pitch: u8) void {
+    if(pitch > pitch_names.len) {
+        map.set(x, y, .{ .tile = 'x', .palette = pal });
+        drawHex(map, x + 1, y, pal, pitch);
     }
     else {
-        for (0..3) |i| {
-            target[i] = gba.bg.TextScreenEntry{
-                .tile_index = pitch_names[pitch][i],
-                .palette_index = pal_index,
-            };
+        for(0..3) |i| {
+            map.set(@intCast(x + i), y, .{
+                .tile = pitch_names[pitch][i],
+                .palette = pal,
+            });
         }
     }
 }
 
-fn drawText(text: []const u8, pal_index: u4, bg_x: u8, bg_y: u8) void {
-    const map = gba.bg.screenBlockMap(24);
-    for (0..text.len) |text_i| {
-        map[bg_x + (@as(u16, bg_y) << 5) + text_i] = gba.bg.TextScreenEntry{
-            .tile_index = text[text_i],
-            .palette_index = pal_index,
-        };
+/// Draw ASCII text to the background map.
+fn drawText(map: gba.display.BackgroundMap, x: u6, y: u6, pal: u4, text: []const u8) void {
+    for(0..text.len) |text_i| {
+        map.set(@truncate(x + text_i), y, .{
+            .tile = text[text_i],
+            .palette = pal,
+        });
     }
 }
 
-fn updateDisplay(track: *Track, bg_x: u8) void {
+/// Draw playback information about each of the three tracks to the screen.
+fn updateDisplay(map: gba.display.BackgroundMap, x: u6, track: *Track) void {
     // Format: [2:address hex] [1:opcode icon] [3:operand]
-    const map = gba.bg.screenBlockMap(24);
     const offset_y: u16 = 7;
-    for (0..16) |row_i| {
-        const bg_y = row_i + 2;
-        const map_i = bg_x + (bg_y << 5);
+    for(0..16) |row_i| {
         const track_pos_row = track.last_note_position >> 1;
-        if (track_pos_row + row_i < offset_y) {
-            drawBlank(6, 1, map + map_i);
+        const y: u6 = @intCast(row_i + 2);
+        if(track_pos_row + row_i < offset_y) {
+            drawBlank(map, x, y, 1, 6);
             continue;
         }
         const track_row = track_pos_row + row_i - offset_y;
         const track_i = track_row << 1;
-        if (track_i + 1 >= track.data.len) {
-            drawBlank(6, 1, map + map_i);
+        if(track_i + 1 >= track.data.len) {
+            drawBlank(map, x, y, 1, 6);
             continue;
         }
         const active = (row_i == offset_y);
+        const active_pal: u4 = if(active) 2 else 0;
         const opcode = track.data[track_i];
         const operand = track.data[track_i + 1];
         // Address (hex)
-        drawHex(@truncate(track_row), 1, map + map_i);
+        drawHex(map, x, y, 1, @truncate(track_row));
         // Opcode (icon)
-        map[map_i + 2] = gba.bg.TextScreenEntry{
-            .tile_index = 0x10 + opcode,
-            .palette_index = if (active) 2 else 0,
-        };
+        map.set(x + 2, y, .{
+            .tile = 0x10 + opcode,
+            .palette = active_pal,
+        });
         // Operand (varies)
-        const operand_pal_index: u4 = if (active) 2 else 0;
         switch (opcode) {
             op_note => {
-                drawPitch(operand, operand_pal_index, map + map_i + 3);
+                drawPitch(map, x + 3, y, active_pal, operand);
             },
             op_goto => {
-                drawBlank(1, operand_pal_index, map + map_i + 3);
-                drawHex(operand, operand_pal_index, map + map_i + 4);
+                drawBlank(map, x + 3, y, active_pal, 1);
+                drawHex(map, x + 4, y, active_pal, operand);
             },
             else => {
-                drawDecimal(operand, operand_pal_index, map + map_i + 3);
+                drawDecimal(map, x + 3, y, active_pal, operand);
             },
         }
     }
 }
 
+/// Entry point.
 pub export fn main() void {
     // Initialize sound engine data.
     var tracker = Tracker{
@@ -790,78 +770,87 @@ pub export fn main() void {
     };
 
     // Initialize sound registers to allow playback.
-    gba.sound.status.* = gba.sound.Status{
-        .pulse_1 = .enable,
-        .pulse_2 = .enable,
-        .noise = .enable,
-        .master = .enable,
-    };
-    gba.sound.dmg.* = gba.sound.Dmg{
-        .left_volume = 0x7,
-        .right_volume = 0x7,
-        .left_pulse_1 = .enable,
-        .left_pulse_2 = .enable,
-        .left_noise = .enable,
-        .right_pulse_1 = .enable,
-        .right_pulse_2 = .enable,
-        .right_noise = .enable,
+    gba.sound.status.* = .init(true);
+    gba.sound.ctrl.dmg = gba.sound.Control.Dmg{
+        .volume_left = 0x7,
+        .volume_right = 0x7,
+        .left_pulse_1 = true,
+        .left_pulse_2 = true,
+        .left_noise = true,
+        .right_pulse_1 = true,
+        .right_pulse_2 = true,
+        .right_noise = true,
     };
     gba.sound.bias.* = gba.sound.Bias{
         .cycle = .bits_6,
     };
 
     // Initialize graphics.
-    gba.bg.ctrl[0] = gba.bg.Control{
-        .screen_base_block = 24,
-        .tile_map_size = .{ .normal = .@"32x32" },
-    };
-    gba.bg.scroll[0].set(0, 0);
-    gba.bg.palette.banks[0][1] = .rgb(31, 31, 31);
-    gba.bg.palette.banks[0][2] = .rgb(0, 0, 0);
-    gba.bg.palette.banks[1][1] = .rgb(31, 31, 31);
-    gba.bg.palette.banks[1][2] = .rgb(19, 19, 19);
-    gba.bg.palette.banks[2][1] = .rgb(1, 0, 25);
-    gba.bg.palette.banks[2][2] = .rgb(31, 31, 31);
-    gba.display.memcpyCharBlock(0, 0, &charset_data);
+    const bg0_map = gba.display.BackgroundMap.setup(0, .{
+        .base_screenblock = 24,
+        .size = .size_32x32
+    });
+    gba.display.bg_palette.banks[0][1] = .rgb(31, 31, 31);
+    gba.display.bg_palette.banks[0][2] = .rgb(0, 0, 0);
+    gba.display.bg_palette.banks[1][1] = .rgb(31, 31, 31);
+    gba.display.bg_palette.banks[1][2] = .rgb(19, 19, 19);
+    gba.display.bg_palette.banks[2][1] = .rgb(1, 0, 25);
+    gba.display.bg_palette.banks[2][2] = .rgb(31, 31, 31);
+    gba.display.memcpyBackgroundTiles4Bpp(0, @ptrCast(&charset_data));
     gba.display.ctrl.* = gba.display.Control{
-        .bg0 = .enable,
+        .bg0 = true,
     };
-
+    
+    // Enable VBlank interrupts.
+    // This will allow running the main loop once per frame.
+    gba.display.status.vblank_interrupt = true;
+    gba.interrupt.enable.vblank = true;
+    gba.interrupt.master.enable = true;
+    
+    // State variables relevant to the main loop.
+    var input: gba.input.BufferedKeysState = .{};
     var playing: bool = false;
     var frame: u8 = 0;
-
-    drawText("Pulse1", 2, 4, 0);
-    drawText("Pulse2", 2, 12, 0);
-    drawText("Noise ", 2, 20, 0);
-    drawText("A\x0e    B\x0c    R\x0f", 1, 8, 19);
+    
+    // Draw column headers for each track, and button prompts at the bottom.
+    drawText(bg0_map, 4, 0, 2, "Pulse1");
+    drawText(bg0_map, 12, 0, 2, "Pulse2");
+    drawText(bg0_map, 20, 0, 2, "Noise ");
+    drawText(bg0_map, 8, 19, 1, "A\x0e    B\x0c    R\x0f");
 
     // Main loop. Update the Tracker once per frame.
-    while (true) : (frame +%= 1) {
+    while(true) : (frame +%= 1) {
+        // Run this loop only once per frame.
         gba.display.naiveVSync();
-        _ = gba.input.poll();
+        
+        // Handle input
+        input.poll();
         // Toggle paused/playing upon pressing A.
-        if (gba.input.isKeyJustPressed(.A)) {
+        if(input.isJustPressed(.A)) {
             playing = !playing;
         }
         // Stop playback upon pressing B.
-        if (gba.input.isKeyJustPressed(.B)) {
+        if(input.isJustPressed(.B)) {
             playing = false;
             tracker.reset();
         }
         // Fast-forward when holding R.
-        const fast_forward = gba.input.isKeyPressed(.R);
+        const fast_forward = input.isPressed(.R);
+        
         // Play music, and flash the A button prompt if paused.
-        if (playing) {
+        if(playing) {
             tracker.update();
-            if (fast_forward) tracker.update();
-            drawText("A\x0d", 1, 8, 19);
+            if(fast_forward) tracker.update();
+            drawText(bg0_map, 8, 19, 1, "A\x0d");
         }
         else {
-            drawText("A\x0e", if ((frame & 0x7f) < 0x40) 2 else 0, 8, 19);
+            const flashing_pal: u4 = if((frame & 0x7f) < 0x40) 2 else 0;
+            drawText(bg0_map, 8, 19, flashing_pal, "A\x0e");
         }
+        
         // Draw tracker state.
-        updateDisplay(&tracker.pulse_1, 4);
-        updateDisplay(&tracker.pulse_2, 12);
-        updateDisplay(&tracker.noise, 20);
+        updateDisplay(bg0_map, 4, &tracker.pulse_1);
+        updateDisplay(bg0_map, 12, &tracker.pulse_2);
+        updateDisplay(bg0_map, 20, &tracker.noise);
     }
 }

@@ -2,6 +2,8 @@
 
 ZigGBA is an SDK for creating Game Boy Advance games using the [Zig](https://ziglang.org/) programming language. It is currently in a WIP/experimental state. This repository is a maintained fork of [wendigojaeger/ZigGBA](https://github.com/wendigojaeger/ZigGBA).
 
+For bug reports and feature requests, please submit a [GitHub issue](https://github.com/pineapplemachine/ziggba/issues). For general questions and support, you can submit an issue or you can visit the [gbadev Discord server](https://discord.gg/7DBJvgW9bb) which has a `#ziggba` channel for discussions specifically about this project, as well as other channels for more general discussions about GBA development.
+
 Many thanks to [TONC](https://gbadev.net/tonc/) and [GBATEK](https://problemkaputt.de/gbatek.htm), both of which have been major inspirations and resources for this project.
 
 Add to your `build.zig.zon`:
@@ -98,10 +100,22 @@ zigup 0.14.1
 To build, simply use Zig's integrated build system
 
 ```bash
+# Download this git repository
+git clone https://github.com/braheezy/ziggba.git
+# Navigate to the downloaded directory
+cd ziggba
+# Build `gba.text` font data used by examples
+zig build font
+# Compile example ROMs, outputted to `zig-out/bin/`
 zig build
 ```
 
 ZigGBA's `zig build` will write example ROMs to `zig-out/bin/`. These are files with a `*.gba` extension which can be run on a GBA using special hardware, or which can run in emulators such as [mGBA](https://github.com/mgba-emu/mgba), [Mesen](https://github.com/SourMesen/Mesen2/), [no$gba](https://problemkaputt.de/gba.htm), and [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance).
+
+Pass the `-Dgdb` flag to `zig build` to also output an `*.elf` file containing debug symbols.
+
+See the [ziggba-example](https://www.github.com/pineapplemachine/ziggba-example) repository for an example of a project which uses ZigGBA as a dependency.
+
 
 ## Showcase
 

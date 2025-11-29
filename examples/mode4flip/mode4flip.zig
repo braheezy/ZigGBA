@@ -1,39 +1,39 @@
 const gba = @import("gba");
-const input = gba.input;
-const display = gba.display;
 
-export var header linksection(".gbaheader") = gba.initHeader("MODE4FLIP", "AMFE", "00", 0);
+export var header linksection(".gbaheader") = gba.Header.init("MODE4FLIP", "AMFE", "00", 0);
 
-const front_image_data = @embedFile("front.agi");
-const back_image_data = @embedFile("back.agi");
-const palette_data = @embedFile("mode4flip.agp");
-
-fn loadImageData() void {
-    gba.mem.memcpy32(display.vram, @as([*]align(2) const u8, @ptrCast(@alignCast(front_image_data))), front_image_data.len);
-    gba.mem.memcpy32(display.back_page, @as([*]align(2) const u8, @ptrCast(@alignCast(back_image_data))), back_image_data.len);
-    gba.mem.memcpy32(gba.bg.palette, @as([*]align(2) const u8, @ptrCast(@alignCast(palette_data))), palette_data.len);
-}
+const front_image_data align(4) = @embedFile("front.agi").*;
+const back_image_data align(4) = @embedFile("back.agi").*;
+const palette_data align(4) = @embedFile("mode4flip.agp").*;
 
 pub export fn main() void {
-    display.ctrl.* = .{
-        .mode = .mode4,
-        .bg2 = .enable,
-    };
-
-    loadImageData();
+    // Initialize graphics mode 4.
+    gba.display.ctrl.* = .initMode4(.{});
+    
+    // Load graphics data into VRAM.
+    gba.mem.memcpy(gba.display.getMode4Surface(0).data, &front_image_data, front_image_data.len);
+    gba.mem.memcpy(gba.display.getMode4Surface(1).data, &back_image_data, back_image_data.len);
+    gba.mem.memcpy(gba.display.bg_palette, &palette_data, palette_data.len);
+    
+    // Enable VBlank interrupts.
+    // This will allow running the main loop once per frame.
+    gba.display.status.vblank_interrupt = true;
+    gba.interrupt.enable.vblank = true;
+    gba.interrupt.master.enable = true;
 
     var i: u32 = 0;
-    while (true) : (i += 1) {
-        _ = input.poll();
-        while (input.isKeyPressed(.start)) {
-            _ = input.poll();
-        }
+    while(true) {
+        // Run this loop at most once per frame.
+        gba.bios.vblankIntrWait();
 
-        display.naiveVSync();
-
-        if (i == 60 * 2) {
-            i = 0;
-            display.pageFlip();
+        // Flip every 120 frames, i.e. about every two seconds,
+        // but pause this while the start button is held down.
+        if(!gba.input.state.isPressed(.start)) {
+            i += 1;
+            if (i >= 120) {
+                gba.display.ctrl.bitmapFlip();
+                i = 0;
+            }
         }
     }
 }

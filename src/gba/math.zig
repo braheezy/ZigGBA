@@ -1,132 +1,332 @@
-const std = @import("std");
-const Signedness = std.builtin.Signedness;
-const Int = std.meta.Int;
+//! This module contains math-related helpers.
 
-// TODO: Add convenience functions for converting between fixed point types.
-/// Fixed point integer type
-pub fn FixedPoint(comptime signedness: Signedness, comptime integral_bits: comptime_int, comptime fractional_bits: comptime_int) type {
-    if (integral_bits + fractional_bits > 32)
-        @compileError("Only 32 bit and smaller fixed point numbers are supported");
-    const RawType = Int(signedness, integral_bits + fractional_bits);
-    return packed struct(RawType) {
-        const Self = @This();
+const isGbaTarget = @import("util.zig").isGbaTarget;
 
-        pub const FractionalType = Int(signedness, fractional_bits);
-        pub const IntegralType = Int(signedness, integral_bits);
-        const MaxIntegerType = Int(signedness, 32);
+test {
+    _ = @import("math_fixed.zig");
+}
 
-        pub const scale = 1 << fractional_bits;
+extern fn umull_thumb(x: u32, y: u32) UnsignedMulLongResult;
+extern fn smull_thumb(x: i32, y: i32) SignedMulLongResult;
 
-        fractional: FractionalType = 0,
-        integral: IntegralType = 0,
+// Affine transformation matrix types.
+pub const Affine2x2 = @import("math_affine.zig").Affine2x2;
+pub const Affine3x2 = @import("math_affine.zig").Affine3x2;
 
-        pub fn raw(self: Self) RawType {
-            return @bitCast(self);
-        }
+// Fixed-point math types.
+pub const isFixedPointType = @import("math_fixed.zig").isFixedPointType;
+pub const isSignedFixedPointType = @import("math_fixed.zig").isSignedFixedPointType;
+pub const isUnsignedFixedPointType = @import("math_fixed.zig").isUnsignedFixedPointType;
+pub const FormatDecimalFixedOptions = @import("math_fixed.zig").FormatDecimalFixedOptions;
+pub const sin_lut = @import("math_fixed.zig").sin_lut;
+pub const FixedU16R16 = @import("math_fixed.zig").FixedU16R16;
+pub const FixedI = @import("math_fixed.zig").FixedI;
+pub const FixedI16R8 = @import("math_fixed.zig").FixedI16R8;
+pub const FixedI16R14 = @import("math_fixed.zig").FixedI16R14;
+pub const FixedI32R8 = @import("math_fixed.zig").FixedI32R8;
+pub const FixedI32R16 = @import("math_fixed.zig").FixedI32R16;
 
-        pub fn eql(lhs: Self, rhs: Self) bool {
-            return lhs.raw() == rhs.raw();
-        }
+// 2x2 matrix types.
+pub const Mat2x2 = @import("math_mat2x2.zig").Mat2x2;
+pub const Mat2x2I = @import("math_mat2x2.zig").Mat2x2I;
+pub const Mat2x2FixedI16R8 = @import("math_mat2x2.zig").Mat2x2FixedI16R8;
+pub const Mat2x2FixedI32R8 = @import("math_mat2x2.zig").Mat2x2FixedI32R8;
+pub const Mat2x2FixedI32R16 = @import("math_mat2x2.zig").Mat2x2FixedI32R16;
 
-        /// Takes an integer and returns a fixed point number with that integer as its integral value.
-        pub fn fromInt(value: IntegralType) Self {
-            return .{ .integral = value };
-        }
+// 3x3 matrix types.
+pub const Mat3x3 = @import("math_mat3x3.zig").Mat3x3;
+pub const Mat3x3I = @import("math_mat3x3.zig").Mat3x3I;
+pub const Mat3x3FixedI16R8 = @import("math_mat3x3.zig").Mat3x3FixedI16R8;
+pub const Mat3x3FixedI32R8 = @import("math_mat3x3.zig").Mat3x3FixedI32R8;
+pub const Mat3x3FixedI32R16 = @import("math_mat3x3.zig").Mat3x3FixedI32R16;
 
-        pub fn fromF32(comptime value: f32) Self {
-            return @bitCast(@as(RawType, @intFromFloat(value * scale)));
-        }
+// Rectangle types.
+pub const Rect = @import("math_rect.zig").Rect;
+pub const RectI8 = @import("math_rect.zig").RectI8;
+pub const RectU8 = @import("math_rect.zig").RectU8;
+pub const RectI16 = @import("math_rect.zig").RectI16;
+pub const RectU16 = @import("math_rect.zig").RectU16;
+pub const RectI32 = @import("math_rect.zig").RectI32;
+pub const RectU32 = @import("math_rect.zig").RectU32;
 
-        pub fn setInt(self: *Self, value: IntegralType) void {
-            self.* = fromInt(value);
-        }
+// 2-vector types.
+pub const Vec2 = @import("math_vec2.zig").Vec2;
+pub const Vec2B = @import("math_vec2.zig").Vec2B;
+pub const Vec2I = @import("math_vec2.zig").Vec2I;
+pub const Vec2U = @import("math_vec2.zig").Vec2U;
+pub const Vec2I8 = @import("math_vec2.zig").Vec2I8;
+pub const Vec2I16 = @import("math_vec2.zig").Vec2I16;
+pub const Vec2I32 = @import("math_vec2.zig").Vec2I32;
+pub const Vec2U8 = @import("math_vec2.zig").Vec2U8;
+pub const Vec2U16 = @import("math_vec2.zig").Vec2U16;
+pub const Vec2U32 = @import("math_vec2.zig").Vec2U32;
+pub const Vec2FixedI16R8 = @import("math_vec2.zig").Vec2FixedI16R8;
+pub const Vec2FixedI32R8 = @import("math_vec2.zig").Vec2FixedI32R8;
+pub const Vec2FixedI32R16 = @import("math_vec2.zig").Vec2FixedI32R16;
 
-        pub fn setF32(self: *Self, comptime value: f32) void {
-            self.* = fromF32(value);
-        }
+// 3-vector types
+pub const Vec3 = @import("math_vec3.zig").Vec3;
+pub const Vec3I = @import("math_vec3.zig").Vec3I;
+pub const Vec3I8 = @import("math_vec3.zig").Vec3I8;
+pub const Vec3I16 = @import("math_vec3.zig").Vec3I16;
+pub const Vec3I32 = @import("math_vec3.zig").Vec3I32;
+pub const Vec3FixedI16R8 = @import("math_vec3.zig").Vec3FixedI16R8;
+pub const Vec3FixedI32R8 = @import("math_vec3.zig").Vec3FixedI32R8;
+pub const Vec3FixedI32R16 = @import("math_vec3.zig").Vec3FixedI32R16;
 
-        pub fn toF32(self: Self) f32 {
-            return @as(f32, @floatFromInt(self.raw())) / scale;
-        }
+// TODO: Vec4 types
+// TODO: Mat4x4 types
+// TODO: Complex type
 
-        pub fn add(left: Self, right: Self) Self {
-            return @bitCast(left.raw() + right.raw());
-        }
-
-        pub fn setAdd(left: *Self, right: Self) void {
-            left.* = add(left.*, right);
-        }
-
-        pub fn sub(left: Self, right: Self) Self {
-            return @bitCast(left.raw() - right.raw());
-        }
-
-        pub fn setSub(left: *Self, right: Self) void {
-            left.* = sub(left.*, right);
-        }
-
-        pub fn toInt32(self: Self) MaxIntegerType {
-            return @as(MaxIntegerType, @intCast(self.raw()));
-        }
-
-        pub fn mul(left: Self, right: Self) Self {
-            return @bitCast(@as(RawType, @truncate((left.toInt32() * right.toInt32()) >> fractional_bits)));
-        }
-
-        pub fn setMul(left: *Self, right: Self) void {
-            left.* = mul(left.*, right);
-        }
-
-        pub fn div(left: Self, right: Self) Self {
-            return @bitCast(@as(RawType, @truncate(@divTrunc(left.toInt32() * scale, right.toInt32()))));
-        }
-
-        pub fn setDiv(left: *Self, right: Self) void {
-            left.* = div(left.*, right);
-        }
-
-        const ToIntType = if (@sizeOf(RawType) <= 2) RawType else MaxIntegerType;
-
-        pub fn toInt(self: Self) ToIntType {
-            return @as(ToIntType, @intCast(self.integral));
-        }
+/// Returns true when the given type is an integer primitive type,
+/// signed or unsigned.
+pub fn isIntPrimitiveType(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .int => true,
+        else => false,
     };
 }
 
-pub const I8_8 = FixedPoint(.signed, 8, 8);
-pub const U8_8 = FixedPoint(.unsigned, 8, 8);
+/// Returns true when the given type is a signed integer primitive type.
+pub fn isSignedIntPrimitiveType(comptime T: type) bool {
+    return comptime (switch (@typeInfo(T)) {
+        .int => |int_info| int_info.signedness == .signed,
+        else => false,
+    });
+}
 
-pub const I4_12 = FixedPoint(.signed, 4, 12);
-pub const U4_12 = FixedPoint(.unsigned, 4, 12);
+/// Returns true when the given type is an usigned integer primitive type.
+pub fn isUnsignedIntPrimitiveType(comptime T: type) bool {
+    return comptime (switch (@typeInfo(T)) {
+        .int => |int_info| int_info.signedness == .unsigned,
+        else => false,
+    });
+}
 
-pub const I20_8 = FixedPoint(.signed, 20, 8);
-pub const U20_8 = FixedPoint(.unsigned, 20, 8);
+/// Get the signed int primitive type with a given number of bits.
+/// For example, pass a `bits` value of 32 to get `i32`.
+pub fn getSignedIntPrimitiveType(comptime bits: comptime_int) type {
+    return @Type(.{
+        .int = .{ .signedness = .signed, .bits = bits },
+    });
+}
 
-// TODO: Consider a comptime function allowing users to define their own lookup tables
-// Some sound engines have one that they already use
-pub const sin_lut: [512]I4_12 = blk: {
-    @setEvalBranchQuota(10000);
-    var result: [512]I4_12 = undefined;
+/// Get the unsigned int primitive type with a given number of bits.
+/// For example, pass a `bits` value of 32 to get `u32`.
+pub fn getUnsignedIntPrimitiveType(comptime bits: comptime_int) type {
+    return @Type(.{
+        .int = .{ .signedness = .signed, .bits = bits },
+    });
+}
 
-    for (0..result.len) |i| {
-        const sin_value = std.math.sin(@as(f32, @floatFromInt(i)) * std.math.tau / 512.0);
-        result[i] = I4_12.fromF32(sin_value);
-    }
-    break :blk result;
+/// Represents the product returned by `unsignedMulLong`.
+pub const UnsignedMulLongResult = extern struct {
+    /// Low 32 bits of the product.
+    lo: u32,
+    /// High 32 bits of the product.
+    hi: u32,
 };
 
-pub fn sin(theta: i32) I4_12 {
-    return sin_lut[@as(u32, @bitCast((theta >> 7) & 0x1FF))];
+/// Represents the product returned by `signedMulLong`.
+pub const SignedMulLongResult = extern struct {
+    /// Low 32 bits of the product.
+    lo: i32,
+    /// High 32 bits of the product.
+    hi: i32,
+};
+
+/// Unsigned multiply long.
+/// Multiply two unsigned integers and get the 64-bit product.
+pub inline fn unsignedMulLong(x: u32, y: u32) UnsignedMulLongResult {
+    if (comptime (!isGbaTarget())) {
+        const product = @as(u64, x) * @as(u64, y);
+        return .{
+            .lo = @truncate(product),
+            .hi = @truncate(product >> 32),
+        };
+    } else {
+        return umull_thumb(x, y);
+    }
 }
 
-pub fn cos(theta: i32) I4_12 {
-    return sin_lut[@as(u32, @bitCast(((theta >> 7) + 128) & 0x1FF))];
+/// Signed multiply long.
+/// Multiply two unsigned integers and get the 64-bit product.
+pub inline fn signedMulLong(x: i32, y: i32) SignedMulLongResult {
+    if (comptime (!isGbaTarget())) {
+        const product = @as(i64, x) * @as(i64, y);
+        return .{
+            .lo = @truncate(product),
+            .hi = @truncate(product >> 32),
+        };
+    } else {
+        return smull_thumb(x, y);
+    }
 }
 
-pub fn degreeToGbaAngle(comptime input: i32) i32 {
-    return @as(i32, @intFromFloat(@as(f32, @floatFromInt(input)) * ((1 << 16) / 360.0)));
+/// Generic function that works for both integer primitives
+/// and fixed point values.
+pub inline fn zero(comptime T: type) T {
+    if (comptime (isIntPrimitiveType(T))) {
+        return 0;
+    } else if (comptime (isFixedPointType(T))) {
+        return .zero;
+    } else {
+        @compileError("Operation is not supported for this type: " ++ @typeName(T));
+    }
 }
 
-pub fn radianToGbaAngle(comptime input: f32) i32 {
-    return @as(i32, @intFromFloat(input * ((1 << 16) / (std.math.tau))));
+/// Generic function that works for both integer primitives
+/// and fixed point values.
+pub inline fn one(comptime T: type) T {
+    if (comptime (isIntPrimitiveType(T))) {
+        return 1;
+    } else if (comptime (isFixedPointType(T) and @hasDecl(T, "toInt"))) {
+        return .one;
+    } else {
+        @compileError("Operation is not supported for this type: " ++ @typeName(T));
+    }
+}
+
+/// Generic function that works for both signed integer primitives
+/// and signed fixed point values.
+pub inline fn negativeOne(comptime T: type) T {
+    if (comptime (isSignedIntPrimitiveType(T))) {
+        return -1;
+    } else if (comptime (isSignedFixedPointType(T))) {
+        return .negative_one;
+    } else {
+        @compileError("Operation is not supported for this type: " ++ @typeName(T));
+    }
+}
+
+/// Generic negation function that works on both signed integer primitives
+/// and signed fixed point values.
+pub inline fn negate(comptime T: type, value: T) T {
+    if (comptime (isSignedFixedPointType(T))) {
+        return value.negate();
+    } else {
+        return -value;
+    }
+}
+
+/// Generic logical bit shift left function that works on both
+/// integer primitives and fixed point values.
+/// The number of bits to shift by must be known at comptime.
+pub inline fn lsl(comptime T: type, value: T, comptime bits: comptime_int) T {
+    if (comptime (isFixedPointType(T))) {
+        return value.lsl(bits);
+    } else {
+        return value << bits;
+    }
+}
+
+/// Generic logical bit shift right function that works on both
+/// integer primitives and fixed point values.
+/// The number of bits to shift by must be known at comptime.
+pub inline fn lsr(comptime T: type, value: T, comptime bits: comptime_int) T {
+    if (comptime (isFixedPointType(T))) {
+        return value.lsr(bits);
+    } else if (comptime (isUnsignedIntPrimitiveType(T))) {
+        return value >> bits;
+    } else {
+        const UnsignedT = getUnsignedIntPrimitiveType(@bitSizeOf(T));
+        const i_value: UnsignedT = @bitCast(value);
+        return @bitCast(i_value >> bits);
+    }
+}
+
+/// Generic arithmetic bit shift right function that works on both
+/// integer primitives and fixed point values.
+/// The number of bits to shift by must be known at comptime.
+pub inline fn asr(comptime T: type, value: T, comptime bits: comptime_int) T {
+    if (comptime (isFixedPointType(T))) {
+        return value.lsr(bits);
+    } else if (comptime (isSignedIntPrimitiveType(T))) {
+        return value >> bits;
+    } else {
+        const SignedT = getSignedIntPrimitiveType(@bitSizeOf(T));
+        const i_value: SignedT = @bitCast(value);
+        return @bitCast(i_value >> bits);
+    }
+}
+
+/// Generic logical bit shift left function that works on both
+/// integer primitives and fixed point values.
+/// The number of bits to shift can be a variable.
+pub inline fn lslVar(comptime T: type, value: T, bits: anytype) T {
+    if (comptime (isFixedPointType(T))) {
+        return value.lslVar(bits);
+    } else {
+        return value << bits;
+    }
+}
+
+/// Generic logical bit shift right function that works on both
+/// integer primitives and fixed point values.
+/// The number of bits to shift can be a variable.
+pub inline fn lsrVar(comptime T: type, value: T, bits: anytype) T {
+    if (comptime (isFixedPointType(T))) {
+        return value.lsrVar(bits);
+    } else if (comptime (isUnsignedIntPrimitiveType(T))) {
+        return value >> bits;
+    } else {
+        const UnsignedT = getUnsignedIntPrimitiveType(@bitSizeOf(T));
+        const i_value: UnsignedT = @bitCast(value);
+        return @bitCast(i_value >> bits);
+    }
+}
+
+/// Generic arithmetic bit shift right function that works on both
+/// integer primitives and fixed point values.
+/// The number of bits to shift can be a variable.
+pub inline fn asrVar(comptime T: type, value: T, bits: anytype) T {
+    if (comptime (isFixedPointType(T))) {
+        return value.lsrVar(bits);
+    } else if (comptime (isSignedIntPrimitiveType(T))) {
+        return value >> bits;
+    } else {
+        const SignedT = getSignedIntPrimitiveType(@bitSizeOf(T));
+        const i_value: SignedT = @bitCast(value);
+        return @bitCast(i_value >> bits);
+    }
+}
+
+/// Generic addition function that works on both integer primitives
+/// and fixed point values.
+pub inline fn add(comptime T: type, a: T, b: T) T {
+    if (comptime (isFixedPointType(T))) {
+        return a.add(b);
+    } else {
+        return a + b;
+    }
+}
+
+/// Generic subtract function that works on both integer primitives
+/// and fixed point values.
+pub inline fn sub(comptime T: type, a: T, b: T) T {
+    if (comptime (isFixedPointType(T))) {
+        return a.sub(b);
+    } else {
+        return a - b;
+    }
+}
+
+/// Generic multiply function that works on both integer primitives
+/// and fixed point values.
+pub inline fn mul(comptime T: type, a: T, b: T) T {
+    if (comptime (isFixedPointType(T))) {
+        return a.mul(b);
+    } else {
+        return a * b;
+    }
+}
+
+/// Generic comparison function that works on both integer primitives
+/// and fixed point values.
+pub inline fn eql(comptime T: type, a: T, b: T) T {
+    if (comptime (isFixedPointType(T))) {
+        return a.eql(b);
+    } else {
+        return a * b;
+    }
 }

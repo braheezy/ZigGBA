@@ -1,15 +1,11 @@
-const gba = @import("gba");
+//! This module implements a Zig entry point for a GBA ROM.
 
-const bios = gba.bios;
-const mem = gba.mem;
+const gba = @import("gba.zig");
 
 /// This function is called after boot and initialization.
 /// It must be defined in user code.
 extern fn main() void;
 
-extern var __bss_lma: u8;
-extern var __bss_start__: u8;
-extern var __bss_end__: u8;
 extern var __data_lma: u8;
 extern var __data_start__: u8;
 extern var __data_end__: u8;
@@ -18,23 +14,39 @@ extern var __iwram_start__: u8;
 extern var __iwram_end__: u8;
 
 export fn _start_zig() noreturn {
-    // Use BIOS function to clear all data
-    bios.resetRamRegisters(bios.RamResetFlags.initFull());
-    // Clear .bss
-    mem.memset32(&__bss_start__, 0, @intFromPtr(&__bss_end__) - @intFromPtr(&__bss_start__));
-    // Copy .data section to EWRAM
-    mem.memcpy32(&__data_start__, &__data_lma, @intFromPtr(&__data_end__) - @intFromPtr(&__data_start__));
-
-    // Copy .iwram section (code/data to be run in IWRAM)
-    if (@intFromPtr(&__iwram_end__) - @intFromPtr(&__iwram_start__) > 0) {
-        mem.memcpy32(
-            &__iwram_start__,
-            &__iwram_lma,
-            @intFromPtr(&__iwram_end__) - @intFromPtr(&__iwram_start__),
-        );
-    }
-    // Call user's main
+    // Initialize REG_WAITCNT.
+    // TODO: Provide a build option to more easily customize this behavior
+    gba.mem.wait_ctrl.* = .default;
+    // Use BIOS function to clear data.
+    // Don't clear EWRAM or IWRAM: Anything not overwritten later in this
+    // startup routine can safely be garbage bytes.
+    // TODO: Provide a build option to more easily customize this behavior
+    gba.bios.registerRamReset(.{
+        .palette = true,
+        .vram = true,
+        .oam = true,
+        .sio_registers = true,
+        .sound_registers = true,
+        .other_registers = true,
+    });
+    // Copy .iwram section to IWRAM.
+    gba.bios.cpuSetCopy32(
+        @ptrCast(@alignCast(&__iwram_lma)),
+        @ptrCast(@alignCast(&__iwram_start__)),
+        @truncate(@intFromPtr(&__iwram_end__) - @intFromPtr(&__iwram_start__)),
+    );
+    // Copy .data section to EWRAM.
+    gba.bios.cpuSetCopy32(
+        @ptrCast(@alignCast(&__data_lma)),
+        @ptrCast(@alignCast(&__data_start__)),
+        @truncate(@intFromPtr(&__data_end__) - @intFromPtr(&__data_start__)),
+    );
+    // Initialize default ISR.
+    // TODO: Consider putting isr_default in IWRAM?
+    gba.interrupt.isr_default_redirect = gba.interrupt.isr_default_redirect_null;
+    gba.interrupt.isr_ptr.* = &gba.interrupt.isr_default;
+    // Call user's main.
     main();
-    // If user's main ends, hang here
+    // If user's main ends, hang here.
     while (true) {}
 }
