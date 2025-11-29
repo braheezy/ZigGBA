@@ -553,6 +553,11 @@ fn buildExamples(b: *GbaBuild) void {
         .name = "tileDemo",
         .root_source_file = b.path("examples/tileDemo/tileDemo.zig"),
     });
+    _ = b.addExecutable(.{
+        .name = "swiDemo",
+        .root_source_file = b.path("examples/swiDemo/swiDemo.zig"),
+        .build_options = .{ .text_charsets = .all },
+    });
 
     var bgAffine = b.addExecutable(.{
         .name = "bgAffine",
