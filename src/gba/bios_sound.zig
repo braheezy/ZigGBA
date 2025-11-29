@@ -18,7 +18,7 @@ pub const SoundDriverModeOptions = packed struct(u32) {
         hz_40137 = 11,
         hz_42048 = 12,
     };
-    
+
     reverb_value: u7 = 0,
     reverb: bool = false,
     simultaneous_channels: u4 = 8,
@@ -71,7 +71,7 @@ pub const SoundArea = extern struct {
         /// User access prohibited. Named `r4` in GBATEK documentation.
         _4: [4]u8,
     };
-    
+
     /// Flag the system checks to see whether the work area has been
     /// initialized and whether it is currently being accessed.
     available: bool = false,
@@ -93,67 +93,46 @@ pub const SoundArea = extern struct {
     /// Array for controlling the direct sound channels.
     channels: [8]Channel,
     /// Contains sound data.
-    pcm_buffer: [0xc60]i8
+    pcm_buffer: [0xc60]i8,
 };
 
 /// Wraps a `SoundBiasChange` BIOS call.
 pub fn soundBiasChange(level: bool) void {
-    asm volatile (
-        "swi 0x19"
+    asm volatile ("swi 0x19"
         :
         : [level] "{r0}" (level),
-        : "r0", "r1", "r3"
-    );
+        : .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Wraps a `SoundDriverInit` BIOS call.
 pub fn soundDriverInit(sound_area: *SoundArea) void {
-    asm volatile (
-        "swi 0x1a"
+    asm volatile ("swi 0x1a"
         :
         : [sound_area] "{r0}" (sound_area),
-        : "r0", "r1", "r3"
-    );
+        : .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Wraps a `SoundDriverMode` BIOS call.
 pub fn soundDriverMode(options: SoundDriverModeOptions) void {
-    asm volatile (
-        "swi 0x1b"
+    asm volatile ("swi 0x1b"
         :
         : [options] "{r0}" (options),
-        : "r0", "r1", "r3"
-    );
+        : .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Wraps a `SoundDriverMain` BIOS call.
 pub fn soundDriverMain() void {
-    asm volatile (
-        "swi 0x1c"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x1c" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Wraps a `SoundDriverVSync` BIOS call.
 pub fn soundDriverVSync() void {
-    asm volatile (
-        "swi 0x1d"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x1d" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Wraps a `SoundChannelClear` BIOS call.
 pub fn soundChannelClear() void {
-    asm volatile (
-        "swi 0x1e"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x1e" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Wraps a `MidiKey2Freq` BIOS call.
@@ -162,32 +141,20 @@ pub fn midiKey2Freq(
     midi_key: u8,
     fine_adjustment: u8,
 ) u32 {
-    return asm volatile (
-        "swi 0x1f"
+    return asm volatile ("swi 0x1f"
         : [ret] "={r0}" (-> u32),
         : [wave_data] "{r0}" (wave_data),
           [midi_key] "{r1}" (midi_key),
           [fine_adjustment] "{r2}" (fine_adjustment),
-        : "r0", "r1", "r2", "r3", "cc"
-    );
+        : .{ .r0 = true, .r1 = true, .r2 = true, .r3 = true });
 }
 
 /// Wraps a `SoundDriverVSyncOff` BIOS call.
 pub fn soundDriverVSyncOff() void {
-    asm volatile (
-        "swi 0x28"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x28" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Wraps a `SoundDriverVSyncOn` BIOS call.
 pub fn soundDriverVSyncOn() void {
-    asm volatile (
-        "swi 0x29"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x29" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }

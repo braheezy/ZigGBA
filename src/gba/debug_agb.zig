@@ -29,8 +29,8 @@ const AgbPrintStream = struct {
 
     pub fn write(self: *AgbPrintStream, bytes: []const u8) usize {
         var bytes_i: usize = 0;
-        while(bytes_i < bytes.len) {
-            if(self.written >= agb_buffer_size) {
+        while (bytes_i < bytes.len) {
+            if (self.written >= agb_buffer_size) {
                 gba.bios.agbPrintFlush();
                 self.written = 0;
             }
@@ -39,7 +39,7 @@ const AgbPrintStream = struct {
                 agb_buffer_size - self.written,
             );
             const bytes_i_max = bytes_i + count;
-            while(bytes_i < bytes_i_max) {
+            while (bytes_i < bytes_i_max) {
                 // TODO: This can probably be done more efficiently
                 // by using gba.mem.memcpy, or at least gba.mem.memcpy16?
                 putc(bytes[bytes_i]);
@@ -49,14 +49,14 @@ const AgbPrintStream = struct {
         }
         return bytes_i;
     }
-    
+
     /// Wraps `write` with an interface compatible with `std.io.Writer`.
     pub fn writerWrite(self: *AgbPrintStream, bytes: []const u8) !usize {
         return self.write(bytes);
     }
-    
+
     pub fn flush(self: *AgbPrintStream) void {
-        if(self.written != 0) {
+        if (self.written != 0) {
             gba.bios.agbPrintFlush();
         }
     }

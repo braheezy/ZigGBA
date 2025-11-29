@@ -81,7 +81,7 @@ pub const Vec3FixedI32R16 = @import("math_vec3.zig").Vec3FixedI32R16;
 /// Returns true when the given type is an integer primitive type,
 /// signed or unsigned.
 pub fn isIntPrimitiveType(comptime T: type) bool {
-    return switch(@typeInfo(T)) {
+    return switch (@typeInfo(T)) {
         .int => true,
         else => false,
     };
@@ -89,7 +89,7 @@ pub fn isIntPrimitiveType(comptime T: type) bool {
 
 /// Returns true when the given type is a signed integer primitive type.
 pub fn isSignedIntPrimitiveType(comptime T: type) bool {
-    return comptime(switch(@typeInfo(T)) {
+    return comptime (switch (@typeInfo(T)) {
         .int => |int_info| int_info.signedness == .signed,
         else => false,
     });
@@ -97,7 +97,7 @@ pub fn isSignedIntPrimitiveType(comptime T: type) bool {
 
 /// Returns true when the given type is an usigned integer primitive type.
 pub fn isUnsignedIntPrimitiveType(comptime T: type) bool {
-    return comptime(switch(@typeInfo(T)) {
+    return comptime (switch (@typeInfo(T)) {
         .int => |int_info| int_info.signedness == .unsigned,
         else => false,
     });
@@ -138,14 +138,13 @@ pub const SignedMulLongResult = extern struct {
 /// Unsigned multiply long.
 /// Multiply two unsigned integers and get the 64-bit product.
 pub inline fn unsignedMulLong(x: u32, y: u32) UnsignedMulLongResult {
-    if(comptime(!isGbaTarget())) {
+    if (comptime (!isGbaTarget())) {
         const product = @as(u64, x) * @as(u64, y);
         return .{
             .lo = @truncate(product),
             .hi = @truncate(product >> 32),
         };
-    }
-    else {
+    } else {
         return umull_thumb(x, y);
     }
 }
@@ -153,14 +152,13 @@ pub inline fn unsignedMulLong(x: u32, y: u32) UnsignedMulLongResult {
 /// Signed multiply long.
 /// Multiply two unsigned integers and get the 64-bit product.
 pub inline fn signedMulLong(x: i32, y: i32) SignedMulLongResult {
-    if(comptime(!isGbaTarget())) {
+    if (comptime (!isGbaTarget())) {
         const product = @as(i64, x) * @as(i64, y);
         return .{
             .lo = @truncate(product),
             .hi = @truncate(product >> 32),
         };
-    }
-    else {
+    } else {
         return smull_thumb(x, y);
     }
 }
@@ -168,58 +166,45 @@ pub inline fn signedMulLong(x: i32, y: i32) SignedMulLongResult {
 /// Generic function that works for both integer primitives
 /// and fixed point values.
 pub inline fn zero(comptime T: type) T {
-    if(comptime(isIntPrimitiveType(T))) {
+    if (comptime (isIntPrimitiveType(T))) {
         return 0;
-    }
-    else if(comptime(isFixedPointType(T))) {
+    } else if (comptime (isFixedPointType(T))) {
         return .zero;
-    }
-    else {
-        @compileError(
-            "Operation is not supported for this type: " ++ @typeName(T)
-        );
+    } else {
+        @compileError("Operation is not supported for this type: " ++ @typeName(T));
     }
 }
 
 /// Generic function that works for both integer primitives
 /// and fixed point values.
 pub inline fn one(comptime T: type) T {
-    if(comptime(isIntPrimitiveType(T))) {
+    if (comptime (isIntPrimitiveType(T))) {
         return 1;
-    }
-    else if(comptime(isFixedPointType(T) and @hasDecl(T, "toInt"))) {
+    } else if (comptime (isFixedPointType(T) and @hasDecl(T, "toInt"))) {
         return .one;
-    }
-    else {
-        @compileError(
-            "Operation is not supported for this type: " ++ @typeName(T)
-        );
+    } else {
+        @compileError("Operation is not supported for this type: " ++ @typeName(T));
     }
 }
 
 /// Generic function that works for both signed integer primitives
 /// and signed fixed point values.
 pub inline fn negativeOne(comptime T: type) T {
-    if(comptime(isSignedIntPrimitiveType(T))) {
+    if (comptime (isSignedIntPrimitiveType(T))) {
         return -1;
-    }
-    else if(comptime(isSignedFixedPointType(T))) {
+    } else if (comptime (isSignedFixedPointType(T))) {
         return .negative_one;
-    }
-    else {
-        @compileError(
-            "Operation is not supported for this type: " ++ @typeName(T)
-        );
+    } else {
+        @compileError("Operation is not supported for this type: " ++ @typeName(T));
     }
 }
 
 /// Generic negation function that works on both signed integer primitives
 /// and signed fixed point values.
 pub inline fn negate(comptime T: type, value: T) T {
-    if(comptime(isSignedFixedPointType(T))) {
+    if (comptime (isSignedFixedPointType(T))) {
         return value.negate();
-    }
-    else {
+    } else {
         return -value;
     }
 }
@@ -228,10 +213,9 @@ pub inline fn negate(comptime T: type, value: T) T {
 /// integer primitives and fixed point values.
 /// The number of bits to shift by must be known at comptime.
 pub inline fn lsl(comptime T: type, value: T, comptime bits: comptime_int) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return value.lsl(bits);
-    }
-    else {
+    } else {
         return value << bits;
     }
 }
@@ -240,13 +224,11 @@ pub inline fn lsl(comptime T: type, value: T, comptime bits: comptime_int) T {
 /// integer primitives and fixed point values.
 /// The number of bits to shift by must be known at comptime.
 pub inline fn lsr(comptime T: type, value: T, comptime bits: comptime_int) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return value.lsr(bits);
-    }
-    else if(comptime(isUnsignedIntPrimitiveType(T))) {
+    } else if (comptime (isUnsignedIntPrimitiveType(T))) {
         return value >> bits;
-    }
-    else {
+    } else {
         const UnsignedT = getUnsignedIntPrimitiveType(@bitSizeOf(T));
         const i_value: UnsignedT = @bitCast(value);
         return @bitCast(i_value >> bits);
@@ -257,13 +239,11 @@ pub inline fn lsr(comptime T: type, value: T, comptime bits: comptime_int) T {
 /// integer primitives and fixed point values.
 /// The number of bits to shift by must be known at comptime.
 pub inline fn asr(comptime T: type, value: T, comptime bits: comptime_int) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return value.lsr(bits);
-    }
-    else if(comptime(isSignedIntPrimitiveType(T))) {
+    } else if (comptime (isSignedIntPrimitiveType(T))) {
         return value >> bits;
-    }
-    else {
+    } else {
         const SignedT = getSignedIntPrimitiveType(@bitSizeOf(T));
         const i_value: SignedT = @bitCast(value);
         return @bitCast(i_value >> bits);
@@ -274,10 +254,9 @@ pub inline fn asr(comptime T: type, value: T, comptime bits: comptime_int) T {
 /// integer primitives and fixed point values.
 /// The number of bits to shift can be a variable.
 pub inline fn lslVar(comptime T: type, value: T, bits: anytype) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return value.lslVar(bits);
-    }
-    else {
+    } else {
         return value << bits;
     }
 }
@@ -286,13 +265,11 @@ pub inline fn lslVar(comptime T: type, value: T, bits: anytype) T {
 /// integer primitives and fixed point values.
 /// The number of bits to shift can be a variable.
 pub inline fn lsrVar(comptime T: type, value: T, bits: anytype) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return value.lsrVar(bits);
-    }
-    else if(comptime(isUnsignedIntPrimitiveType(T))) {
+    } else if (comptime (isUnsignedIntPrimitiveType(T))) {
         return value >> bits;
-    }
-    else {
+    } else {
         const UnsignedT = getUnsignedIntPrimitiveType(@bitSizeOf(T));
         const i_value: UnsignedT = @bitCast(value);
         return @bitCast(i_value >> bits);
@@ -303,13 +280,11 @@ pub inline fn lsrVar(comptime T: type, value: T, bits: anytype) T {
 /// integer primitives and fixed point values.
 /// The number of bits to shift can be a variable.
 pub inline fn asrVar(comptime T: type, value: T, bits: anytype) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return value.lsrVar(bits);
-    }
-    else if(comptime(isSignedIntPrimitiveType(T))) {
+    } else if (comptime (isSignedIntPrimitiveType(T))) {
         return value >> bits;
-    }
-    else {
+    } else {
         const SignedT = getSignedIntPrimitiveType(@bitSizeOf(T));
         const i_value: SignedT = @bitCast(value);
         return @bitCast(i_value >> bits);
@@ -319,10 +294,9 @@ pub inline fn asrVar(comptime T: type, value: T, bits: anytype) T {
 /// Generic addition function that works on both integer primitives
 /// and fixed point values.
 pub inline fn add(comptime T: type, a: T, b: T) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return a.add(b);
-    }
-    else {
+    } else {
         return a + b;
     }
 }
@@ -330,10 +304,9 @@ pub inline fn add(comptime T: type, a: T, b: T) T {
 /// Generic subtract function that works on both integer primitives
 /// and fixed point values.
 pub inline fn sub(comptime T: type, a: T, b: T) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return a.sub(b);
-    }
-    else {
+    } else {
         return a - b;
     }
 }
@@ -341,10 +314,9 @@ pub inline fn sub(comptime T: type, a: T, b: T) T {
 /// Generic multiply function that works on both integer primitives
 /// and fixed point values.
 pub inline fn mul(comptime T: type, a: T, b: T) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return a.mul(b);
-    }
-    else {
+    } else {
         return a * b;
     }
 }
@@ -352,10 +324,9 @@ pub inline fn mul(comptime T: type, a: T, b: T) T {
 /// Generic comparison function that works on both integer primitives
 /// and fixed point values.
 pub inline fn eql(comptime T: type, a: T, b: T) T {
-    if(comptime(isFixedPointType(T))) {
+    if (comptime (isFixedPointType(T))) {
         return a.eql(b);
-    }
-    else {
+    } else {
         return a * b;
     }
 }

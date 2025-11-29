@@ -12,7 +12,7 @@ pub const Header = extern struct {
         /// The string contained an invalid character.
         InvalidCharacter,
     };
-    
+
     /// Encodes a relative jump past the end of the header in ARM.
     ///
     /// EA 00 is an unconditional jump without linking.
@@ -105,7 +105,7 @@ pub const Header = extern struct {
     complement_check: u8 align(1) = 0x00,
     /// Reserved area.
     _2: [2]u8 align(1) = @splat(0),
-    
+
     /// Check whether a game name string is valid.
     /// Game name strings must contain only upper-case alphanumeric ASCII
     /// characters, and must not be longer than 12 characters.
@@ -121,7 +121,7 @@ pub const Header = extern struct {
             }
         }
     }
-    
+
     /// Check whether a game code string is valid.
     /// Game code strings must contain only upper-case alphanumeric ASCII
     /// characters, and must be exactly 4 characters long.
@@ -137,7 +137,7 @@ pub const Header = extern struct {
             }
         }
     }
-    
+
     /// Check whether a maker code string is valid.
     /// Maker code strings must contain only upper-case alphanumeric ASCII
     /// characters, and must be exactly 2 characters long.
@@ -153,7 +153,7 @@ pub const Header = extern struct {
             }
         }
     }
-    
+
     /// Initialize a header struct with the given information.
     pub fn init(
         /// Game name string. Must contain only upper-case alphanumeric ASCII
@@ -175,47 +175,35 @@ pub const Header = extern struct {
         comptime {
             var header: Header = .{};
             // Validate strings
-            Header.validateGameName(game_name) catch |err| switch(err) {
-                StringValidationError.InvalidLength => @compileError(
-                    "Game name string is too long. " ++
+            Header.validateGameName(game_name) catch |err| switch (err) {
+                StringValidationError.InvalidLength => @compileError("Game name string is too long. " ++
                     "The game name must contain only upper-case " ++
                     "alphanumeric ASCII characters, and must not be more than " ++
-                    "12 characters in length."
-                ),
-                StringValidationError.InvalidCharacter => @compileError(
-                    "Game name string contains an invalid character. " ++
+                    "12 characters in length."),
+                StringValidationError.InvalidCharacter => @compileError("Game name string contains an invalid character. " ++
                     "The game name must contain only upper-case " ++
                     "alphanumeric ASCII characters, and must not be more than " ++
-                    "12 characters in length."
-                ),
+                    "12 characters in length."),
             };
-            Header.validateGameCode(game_code) catch |err| switch(err) {
-                StringValidationError.InvalidLength => @compileError(
-                    "Game code string is too long. " ++
+            Header.validateGameCode(game_code) catch |err| switch (err) {
+                StringValidationError.InvalidLength => @compileError("Game code string is too long. " ++
                     "The game name must contain only upper-case " ++
                     "alphanumeric ASCII characters, and must be exactly " ++
-                    "4 characters in length."
-                ),
-                StringValidationError.InvalidCharacter => @compileError(
-                    "Game code string contains an invalid character. " ++
+                    "4 characters in length."),
+                StringValidationError.InvalidCharacter => @compileError("Game code string contains an invalid character. " ++
                     "The game name must contain only upper-case " ++
                     "alphanumeric ASCII characters, and must be exactly " ++
-                    "4 characters in length."
-                ),
+                    "4 characters in length."),
             };
-            Header.validateMakerCode(maker_code) catch |err| switch(err) {
-                StringValidationError.InvalidLength => @compileError(
-                    "Maker code string is too long. " ++
+            Header.validateMakerCode(maker_code) catch |err| switch (err) {
+                StringValidationError.InvalidLength => @compileError("Maker code string is too long. " ++
                     "The game name must contain only upper-case " ++
                     "alphanumeric ASCII characters, and must be exactly " ++
-                    "2 characters in length."
-                ),
-                StringValidationError.InvalidCharacter => @compileError(
-                    "Maker code string contains an invalid character. " ++
+                    "2 characters in length."),
+                StringValidationError.InvalidCharacter => @compileError("Maker code string contains an invalid character. " ++
                     "The game name must contain only upper-case " ++
                     "alphanumeric ASCII characters, and must be exactly " ++
-                    "2 characters in length."
-                ),
+                    "2 characters in length."),
             };
             // Initialize data
             @memcpy(header.game_name[0..game_name.len], game_name);

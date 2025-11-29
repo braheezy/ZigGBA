@@ -228,7 +228,15 @@ pub fn SurfaceDraw(
                 const y0i: i32 = @intCast(y0);
                 const x1i: i32 = @intCast(x1);
                 const y1i: i32 = @intCast(y1);
-                if(@abs(y1i - y0i) < @abs(x1i - x0i)) {
+                const dy_abs: i32 = blk: {
+                    const delta = y1i - y0i;
+                    break :blk if (delta < 0) -delta else delta;
+                };
+                const dx_abs: i32 = blk: {
+                    const delta = x1i - x0i;
+                    break :blk if (delta < 0) -delta else delta;
+                };
+                if(dy_abs < dx_abs) {
                     if(x0 > x1) {
                         self.lineLow(x1i, y1i, x0i, y0i, px);
                     }

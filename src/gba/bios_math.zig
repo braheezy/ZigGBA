@@ -21,26 +21,23 @@ pub const DivResult = packed struct {
 /// available.
 pub fn div(numerator: i32, denominator: i32) DivResult {
     assert(denominator != 0);
-    if(comptime(!isGbaTarget())) {
+    if (comptime (!isGbaTarget())) {
         return .{
             .quotient = @divTrunc(numerator, denominator),
             .remainder = @rem(numerator, denominator),
             .absolute_quotient = @abs(numerator) / @abs(denominator),
         };
-    }
-    else {
+    } else {
         var quotient: i32 = undefined;
         var remainder: i32 = undefined;
         var absolute_quotient: u32 = undefined;
-        asm volatile (
-            "swi 0x06"
+        asm volatile ("swi 0x06"
             : [quotient] "={r0}" (quotient),
               [remainder] "={r1}" (remainder),
               [absolute_quotient] "={r3}" (absolute_quotient),
             : [numerator] "{r0}" (numerator),
               [denominator] "{r1}" (denominator),
-            : "r0", "r1", "r3", "cc"
-        );
+            : .{ .r0 = true, .r1 = true, .r3 = true });
         return DivResult{
             .quotient = quotient,
             .remainder = remainder,
@@ -60,26 +57,23 @@ pub fn div(numerator: i32, denominator: i32) DivResult {
 /// available.
 pub fn divArm(numerator: i32, denominator: i32) DivResult {
     assert(denominator != 0);
-    if(comptime(!isGbaTarget())) {
+    if (comptime (!isGbaTarget())) {
         return .{
             .quotient = @divTrunc(numerator, denominator),
             .remainder = @rem(numerator, denominator),
             .absolute_quotient = @abs(numerator) / @abs(denominator),
         };
-    }
-    else {
+    } else {
         var quotient: i32 = undefined;
         var remainder: i32 = undefined;
         var absolute_quotient: u32 = undefined;
-        asm volatile (
-            "swi 0x07"
+        asm volatile ("swi 0x07"
             : [quotient] "={r0}" (quotient),
               [remainder] "={r1}" (remainder),
               [absolute_quotient] "={r3}" (absolute_quotient),
             : [denominator] "{r0}" (denominator),
               [numerator] "{r1}" (numerator),
-            : "r0", "r1", "r3", "cc"
-        );
+            : .{ .r0 = true, .r1 = true, .r3 = true });
         return DivResult{
             .quotient = quotient,
             .remainder = remainder,
@@ -95,30 +89,25 @@ pub fn divArm(numerator: i32, denominator: i32) DivResult {
 /// as you would expect in tests and at comptime where the GBA BIOS is not
 /// available.
 pub fn sqrt(x: u32) u16 {
-    if(comptime(!isGbaTarget())) {
+    if (comptime (!isGbaTarget())) {
         // Reference: https://github.com/ez-me/gba-bios
-        const N_items: [16]u4 = .{
-            15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0
-        };
+        const N_items: [16]u4 = .{ 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
         var n: u32 = x;
         var root: u32 = 0;
         var t: u32 = undefined;
-        for(N_items) |N| {
+        for (N_items) |N| {
             t = root + (1 << N);
-            if(n >= (t << N)) {
+            if (n >= (t << N)) {
                 n -= (t << N);
                 root |= (2 << N);
             }
         }
         return root >> 1;
-    }
-    else {
-        return asm volatile (
-            "swi 0x08"
+    } else {
+        return asm volatile ("swi 0x08"
             : [ret] "={r0}" (-> u16),
             : [x] "{r0}" (x),
-            : "r0", "r1", "r3", "cc"
-        );
+            : .{ .r0 = true, .r1 = true, .r3 = true });
     }
 }
 
@@ -130,7 +119,7 @@ pub fn sqrt(x: u32) u16 {
 /// as you would expect in tests and at comptime where the GBA BIOS is not
 /// available.
 pub fn arctan(x: gba.math.FixedU16R14) gba.math.FixedU16R16 {
-    if(comptime(!isGbaTarget())) {
+    if (comptime (!isGbaTarget())) {
         // Reference: https://github.com/ez-me/gba-bios
         const x2 = @as(i32, x.value) * @as(i32, x.value);
         const a: i32 = -(x2 >> 14);
@@ -142,14 +131,11 @@ pub fn arctan(x: gba.math.FixedU16R14) gba.math.FixedU16R16 {
         b = ((b * a) >> 14) + 0x3651;
         b = ((b * a) >> 14) + 0xa2f9;
         return .initRaw((@as(i32, x.value) * b) >> 16);
-    }
-    else {
-        return asm volatile (
-            "swi 0x09"
+    } else {
+        return asm volatile ("swi 0x09"
             : [ret] "={r0}" (-> gba.math.FixedU16R16),
             : [x] "{r0}" (x),
-            : "r0", "r1", "r3", "cc"
-        );
+            : .{ .r0 = true, .r1 = true, .r3 = true });
     }
 }
 
@@ -163,38 +149,29 @@ pub fn arctan(x: gba.math.FixedU16R14) gba.math.FixedU16R16 {
 /// as you would expect in tests and at comptime where the GBA BIOS is not
 /// available.
 pub fn arctan2(x: i16, y: i16) gba.math.FixedU16R16 {
-    if(comptime(!isGbaTarget())) {
+    if (comptime (!isGbaTarget())) {
         // Reference: https://github.com/ez-me/gba-bios
-        if(y == 0) {
+        if (y == 0) {
             return ((x >> 16) & 0x8000);
-        }
-        else if(x == 0) {
+        } else if (x == 0) {
             return ((y >> 16) & 0x8000) + 0x4000;
-        }
-        else if(@abs(x) > @abs(y) or (
-            (@abs(x) == @abs(y) and !(x < 0 and y < 0))
-        )) {
+        } else if (@abs(x) > @abs(y) or ((@abs(x) == @abs(y) and !(x < 0 and y < 0)))) {
             const atan = arctan(div(@as(i32, y) << 14, x).quotient);
-            if(x < 0) {
+            if (x < 0) {
                 return 0x8000 + atan;
-            }
-            else {
+            } else {
                 return (((y >> 16) & 0x8000) << 1) + atan;
             }
-        }
-        else {
+        } else {
             const atan = arctan(div(@as(i32, x) << 14, y).quotient);
             return (0x4000 + ((y >> 16) & 0x8000)) - atan;
         }
-    }
-    else {
-        return asm volatile (
-            "swi 0x0a"
+    } else {
+        return asm volatile ("swi 0x0a"
             : [ret] "={r0}" (-> gba.math.FixedU16R16),
             : [x] "{r0}" (x),
               [y] "{r1}" (y),
-            : "r0", "r1", "r3", "cc"
-        );
+            : .{ .r0 = true, .r1 = true, .r3 = true });
     }
 }
 
@@ -241,7 +218,7 @@ pub fn bgAffineSetOne(
     /// Write the computed affine transformations and displacements here.
     destination: *volatile gba.math.Affine3x2,
 ) void {
-    const options_array: [1]BgAffineSetOptions = .{ options };
+    const options_array: [1]BgAffineSetOptions = .{options};
     bgAffineSet(&options_array, @ptrCast(destination));
 }
 
@@ -258,7 +235,7 @@ pub fn bgAffineSet(
     /// Write the computed affine transformations and displacements here.
     destination: [*]volatile gba.math.Affine3x2,
 ) void {
-    if(comptime(!isGbaTarget())) {
+    if (comptime (!isGbaTarget())) {
         // Reference: https://github.com/ez-me/gba-bios
         const sin_lut: [256]u16 = .{
             0x0000, 0x0192, 0x0323, 0x04b5, 0x0645, 0x07d5, 0x0964, 0x0af1,
@@ -294,7 +271,7 @@ pub fn bgAffineSet(
             0xe783, 0xe8f8, 0xea71, 0xebed, 0xed6c, 0xeeef, 0xf074, 0xf1fb,
             0xf384, 0xf50f, 0xf69c, 0xf82b, 0xf9bb, 0xfb4b, 0xfcdd, 0xfe6e,
         };
-        for(0..options.len) |i| {
+        for (0..options.len) |i| {
             const theta: u16 = options[i].angle.value >> 8;
             const sin: i32 = @as(i16, @bitCast(sin_lut[theta]));
             const cos: i32 = @as(i16, @bitCast(sin_lut[(theta + 0x40) & 0xff]));
@@ -302,21 +279,17 @@ pub fn bgAffineSet(
             const pb: i16 = @truncate(-((options[i].scale.x.value * sin) >> 14));
             const pc: i16 = @truncate((options[i].scale.y.value * sin) >> 14);
             const pd: i16 = @truncate((options[i].scale.y.value * cos) >> 14);
-            const dx: i32 = (
-                options[i].original.x.value -
+            const dx: i32 = (options[i].original.x.value -
                 (@as(i32, pa) * options[i].display.x) +
-                (@as(i32, pb) * options[i].display.y)
-            );
-            const dy: i32 = (
-                options[i].original.y.value -
+                (@as(i32, pb) * options[i].display.y));
+            const dy: i32 = (options[i].original.y.value -
                 (@as(i32, pc) * options[i].display.x) -
-                (@as(i32, pd) * options[i].display.y)
-            );
+                (@as(i32, pd) * options[i].display.y));
             destination[i] = .init(
                 .initRowMajor(
-                    .initRaw(pa), 
-                    .initRaw(pb), 
-                    .initRaw(pc), 
+                    .initRaw(pa),
+                    .initRaw(pb),
+                    .initRaw(pc),
                     .initRaw(pd),
                 ),
                 .init(
@@ -325,17 +298,14 @@ pub fn bgAffineSet(
                 ),
             );
         }
-    }
-    else {
+    } else {
         const options_len = options.len;
-        asm volatile (
-            "swi 0x0e"
+        asm volatile ("swi 0x0e"
             :
             : [options] "{r0}" (options),
               [destination] "{r1}" (destination),
               [options_len] "{r2}" (options_len),
-            : "r0", "r1", "r2", "r3", "cc", "memory"
-        );
+            : .{ .r0 = true, .r1 = true, .r2 = true, .r3 = true, .memory = true });
     }
 }
 
@@ -393,7 +363,7 @@ pub fn objAffineSet(
     offset: u32,
 ) void {
     assert((offset & 1) == 0);
-    if(comptime(!isGbaTarget())) {
+    if (comptime (!isGbaTarget())) {
         // Reference: https://github.com/ez-me/gba-bios
         const sin_lut: [256]u16 = .{
             0x0000, 0x0192, 0x0323, 0x04b5, 0x0645, 0x07d5, 0x0964, 0x0af1,
@@ -431,7 +401,7 @@ pub fn objAffineSet(
         };
         const dest: *volatile gba.math.FixedI16R8 = @ptrCast(destination);
         const dest_offset = offset >> 1;
-        for(0..options.len) |i| {
+        for (0..options.len) |i| {
             const theta: u16 = options[i].angle.value >> 8;
             const sin: i32 = @as(i16, @bitCast(sin_lut[theta]));
             const cos: i32 = @as(i16, @bitCast(sin_lut[(theta + 0x40) & 0xff]));
@@ -444,17 +414,14 @@ pub fn objAffineSet(
             dest.* = .initRaw((options[i].scale.y.value * cos) >> 14);
             dest += dest_offset;
         }
-    }
-    else {
+    } else {
         const options_len = options.len;
-        asm volatile (
-            "swi 0x0e"
+        asm volatile ("swi 0x0e"
             :
             : [options] "{r0}" (options),
               [destination] "{r1}" (destination),
               [options_len] "{r2}" (options_len),
               [offset] "{r3}" (offset),
-            : "r0", "r1", "r2", "r3", "cc", "memory"
-        );
+            : .{ .r0 = true, .r1 = true, .r2 = true, .r3 = true, .memory = true });
     }
 }

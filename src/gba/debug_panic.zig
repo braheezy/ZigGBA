@@ -11,7 +11,7 @@ pub const std_panic = std.debug.FullPanic(stdPanicHandler);
 pub fn stdPanicHandler(message: []const u8, first_trace_addr: ?usize) noreturn {
     gba.interrupt.master.enable = false; // Prevent interrupts.
     gba.sound.status.* = .init(false); // Mute sounds.
-    if(first_trace_addr) |addr| {
+    if (first_trace_addr) |addr| {
         var addr_buffer: [8]u8 = @splat(0);
         const addr_len = gba.format.formatHexU32(
             &addr_buffer,
@@ -19,8 +19,7 @@ pub fn stdPanicHandler(message: []const u8, first_trace_addr: ?usize) noreturn {
             .{ .pad_zero_len = 8 },
         );
         panic(addr_buffer[0..addr_len], message);
-    }
-    else {
+    } else {
         gba.debug.panic(null, message);
     }
 }
@@ -48,12 +47,12 @@ pub fn panic(location: ?[]const u8, message: []const u8) noreturn {
         0,
     );
     const text_surface = gba.display.bg_blocks.getSurface4Bpp(0, 32, 32);
-    const text_header = if(location) |_| "PANIC @" else "PANIC";
+    const text_header = if (location) |_| "PANIC @" else "PANIC";
     text_surface.draw().text(text_header, .init(2), .{
         .x = 8,
         .y = 4,
     });
-    if(location) |loc| {
+    if (location) |loc| {
         text_surface.draw().text(loc, .init(2), .{
             .x = 50,
             .y = 4,
@@ -69,7 +68,7 @@ pub fn panic(location: ?[]const u8, message: []const u8) noreturn {
     // Try to also print the error to a debugger.
     gba.debug.init();
     gba.debug.write("PANIC");
-    gba.debug.write(if(location) |loc| loc else "No location info");
+    gba.debug.write(if (location) |loc| loc else "No location info");
     gba.debug.write(message);
     // Hang forever.
     gba.bios.halt(); // Hang here in a low-power state.

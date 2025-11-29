@@ -125,7 +125,7 @@ pub const Swi = enum(u8) {
     /// Named `Sqrt` in both Tonc and GBATEK documentation.
     sqrt = 0x08,
     /// Arctangent.
-    /// Accepts a signed 16-bit fixed point value in `r0` with radix 2^14. 
+    /// Accepts a signed 16-bit fixed point value in `r0` with radix 2^14.
     /// Produces an unsigned 16-bit fixed point value in `r0` with radix 2^16
     /// measuring an angle result in revolutions.
     /// See `gba.math.FixedI16R14` and `gba.math.FixedU16R16`.
@@ -250,19 +250,14 @@ pub const Swi = enum(u8) {
 /// (0 means 0x08000000 and anything else means 0x02000000.)
 /// Wraps a `SoftReset` BIOS call.
 pub fn softReset() void {
-    asm volatile (
-        "swi 0x00"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x00" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Flags accepted by the `registerRamReset` BIOS call.
 pub const RegisterRamResetFlags = packed struct(u8) {
     pub const none: RegisterRamResetFlags = .{};
     pub const all: RegisterRamResetFlags = @bitCast(@as(u8, 0xff));
-    
+
     /// Clear on-board WRAM (EWRAM).
     ewram: bool = false,
     /// Clear on-chip WRAM (IWRAM), excluding the last 0x200 bytes.
@@ -286,12 +281,10 @@ pub const RegisterRamResetFlags = packed struct(u8) {
 
 /// Wraps a `RegisterRamReset` BIOS call.
 pub fn registerRamReset(flags: RegisterRamResetFlags) void {
-    asm volatile (
-        "swi 0x01"
+    asm volatile ("swi 0x01"
         :
         : [flags] "{r0}" (flags),
-        : "r0", "r1", "r3", "cc"
-    );
+        : .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Halts the CPU, switching to a low-power mode, until an interrupt
@@ -299,12 +292,7 @@ pub fn registerRamReset(flags: RegisterRamResetFlags) void {
 /// You probably want to enable some interrupts before using this.
 /// Wraps a `Halt` BIOS call.
 pub fn halt() void {
-    asm volatile (
-        "swi 0x02"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x02" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Switches the system to a very low power mode.
@@ -314,12 +302,7 @@ pub fn halt() void {
 /// You probably want to turn off video and sound before using this.
 /// Wraps a `Stop` BIOS call.
 pub fn stop() void {
-    asm volatile (
-        "swi 0x03"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x03" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Determines `intrWait` behavior.
@@ -338,13 +321,11 @@ pub fn intrWait(
     wait_type: IntrWaitType,
     interrupt_flags: gba.interrupt.Flags,
 ) void {
-    asm volatile (
-        "swi 0x04"
+    asm volatile ("swi 0x04"
         :
         : [wait_type] "{r0}" (wait_type),
           [interrupt_flags] "{r1}" (interrupt_flags),
-        : "r0", "r1", "r3", "cc"
-    );
+        : .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Halt execution until a VBlank interrupt triggers.
@@ -359,12 +340,7 @@ pub fn intrWait(
 /// and `gba.interrupt.master.enable`. All three of these flags must be set in
 /// order for VBlank interrupts to occur.
 pub fn vblankIntrWait() void {
-    asm volatile (
-        "swi 0x05"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x05" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 pub const MultiBootParam = extern struct {
@@ -399,34 +375,22 @@ pub fn multiBoot(
     param: *MultiBootParam,
     transfer_mode: MultiBootTransferMode,
 ) bool {
-    return asm volatile (
-        "swi 0x25"
+    return asm volatile ("swi 0x25"
         : [ret] "={r0}" (-> bool),
         : [param] "{r0}" (param),
           [transfer_mode] "{r1}" (transfer_mode),
-        : "r0", "r1", "r3", "cc"
-    );
+        : .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Reboots the GBA, including replaying the Nintendo intro.
 /// Wraps a `HardReset` BIOS call.
 pub fn hardReset() void {
-    asm volatile (
-        "swi 0x26"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0x26" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }
 
 /// Unofficial SWI supported by some emulators, including mGBA.
 /// Prints UTF-8 encoded text from a buffer to a debug log.
 /// See `gba.debug`.
 pub fn agbPrintFlush() void {
-    asm volatile (
-        "swi 0xfa"
-        :
-        :
-        : "r0", "r1", "r3", "cc"
-    );
+    asm volatile ("swi 0xfa" ::: .{ .r0 = true, .r1 = true, .r3 = true });
 }

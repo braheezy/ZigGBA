@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const ColorRgb555 = @import("../gba/color.zig").ColorRgb555;
+const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
 
 /// Save palette data as a binary file at a given file path.
 pub fn savePalette(
@@ -19,19 +19,17 @@ pub const SavePaletteStep = struct {
         palette: []const ColorRgb555,
         output_path: []const u8,
     };
-    
+
     step: std.Build.Step,
     palette: []const ColorRgb555,
     output_path: []const u8,
-    
+
     pub fn create(b: *std.Build, options: Options) *SavePaletteStep {
         const step_name = options.name orelse b.fmt(
             "SavePaletteStep {s}",
-            .{ options.output_path },
+            .{options.output_path},
         );
-        const save_step = (
-            b.allocator.create(SavePaletteStep) catch @panic("OOM")
-        );
+        const save_step = (b.allocator.create(SavePaletteStep) catch @panic("OOM"));
         save_step.* = .{
             .palette = options.palette,
             .output_path = options.output_path,
@@ -44,7 +42,7 @@ pub const SavePaletteStep = struct {
         };
         return save_step;
     }
-    
+
     fn make(
         step: *std.Build.Step,
         make_options: std.Build.Step.MakeOptions,
@@ -52,7 +50,7 @@ pub const SavePaletteStep = struct {
         const self: *SavePaletteStep = @fieldParentPtr("step", step);
         const node_name = step.owner.fmt(
             "Saving palette: {s}",
-            .{ self.output_path },
+            .{self.output_path},
         );
         var node = make_options.progress_node.start(node_name, 1);
         defer node.end();

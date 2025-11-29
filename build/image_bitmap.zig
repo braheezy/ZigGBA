@@ -4,8 +4,8 @@ const ColorRgba32 = @import("color.zig").ColorRgba32;
 const Palettizer = @import("color.zig").Palettizer;
 const ColorQuantizer = @import("color.zig").ColorQuantizer;
 const Image = @import("image.zig").Image;
-const ColorRgb555 = @import("../gba/color.zig").ColorRgb555;
-const RectU16 = @import("../gba/math.zig").RectU16;
+const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
+const RectU16 = @import("../src/gba/math.zig").RectU16;
 
 /// Options expected by `convertImageBitmap8Bpp`.
 pub const ConvertImageBitmap8BppOptions = struct {
@@ -30,7 +30,7 @@ pub const ConvertImageBitmap16BppOptions = struct {
 /// Returned by `convertImageBitmap8Bpp`.
 pub const ConvertImageBitmap8BppOutput = struct {
     const Self = @This();
-    
+
     /// Converted bitmap data.
     /// Pixels are represented in row-major order, i.e. the index for a given
     /// pixel coordinate can be computed as `i = x + (y * width)`.
@@ -39,7 +39,7 @@ pub const ConvertImageBitmap8BppOutput = struct {
     width: u16,
     /// Height of the converted image, in pixels.
     height: u16,
-    
+
     pub fn getPixelColor(self: Self, x: u16, y: u16) u8 {
         assert(x < self.width);
         assert(y < self.height);
@@ -50,7 +50,7 @@ pub const ConvertImageBitmap8BppOutput = struct {
 /// Returned by `convertImageBitmap16Bpp`.
 pub const ConvertImageBitmap16BppOutput = struct {
     const Self = @This();
-    
+
     /// Converted bitmap data.
     /// Pixels are represented in row-major order, i.e. the index for a given
     /// pixel coordinate can be computed as `i = x + (y * width)`.
@@ -59,7 +59,7 @@ pub const ConvertImageBitmap16BppOutput = struct {
     width: u16,
     /// Height of the converted image, in pixels.
     height: u16,
-    
+
     pub fn getPixelColor(self: Self, x: u16, y: u16) ColorRgb555 {
         assert(x < self.width);
         assert(y < self.height);
@@ -86,11 +86,12 @@ pub const ConvertImageBitmap16BppError = ConvertImageBitmapError;
 /// an image file path to read image data from.
 pub fn convertImageBitmap8BppPath(
     allocator: std.mem.Allocator,
+    std_io: std.Io,
     image_path: []const u8,
     options: ConvertImageBitmap8BppOptions,
 ) !ConvertImageBitmap8BppOutput {
-    var image = try Image.fromFilePath(allocator, image_path);
-    defer image.deinit();
+    var image = try Image.fromFilePath(allocator, std_io, image_path);
+    defer image.deinit(allocator);
     return convertImageBitmap8Bpp(allocator, image, options);
 }
 
@@ -99,11 +100,17 @@ pub fn convertImageBitmap8BppPath(
 /// to write the resulting data to.
 pub fn convertSaveImageBitmap8BppPath(
     allocator: std.mem.Allocator,
+    std_io: std.Io,
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageBitmap8BppOptions,
 ) !void {
-    const tiles_data = try convertImageBitmap8BppPath(allocator, image_path, options);
+    const tiles_data = try convertImageBitmap8BppPath(
+        allocator,
+        std_io,
+        image_path,
+        options,
+    );
     defer allocator.free(tiles_data.data);
     var file = try std.fs.cwd().createFile(output_path, .{});
     defer file.close();
@@ -120,18 +127,17 @@ pub fn convertImageBitmap8Bpp(
     // Validate image and handle size
     if (!image.isValid()) {
         return ConvertImageBitmap8BppError.InvalidImage;
-    }
-    else if (!options.allow_empty and image.isEmpty()) {
+    } else if (!options.allow_empty and image.isEmpty()) {
         return ConvertImageBitmap8BppError.EmptyImage;
     }
     const rect: RectU16 = options.rect orelse image.getRect();
-    if(!image.getRect().containsRect(rect)) {
+    if (!image.getRect().containsRect(rect)) {
         return ConvertImageBitmap8BppError.InvalidRect;
     }
     // Encode image data
     var data = try allocator.alloc(u8, image.getSizePixels());
-    for(0..rect.height) |pixel_y| {
-        for(0..rect.width) |pixel_x| {
+    for (0..rect.height) |pixel_y| {
+        for (0..rect.width) |pixel_x| {
             const image_x: u16 = @intCast(pixel_x + rect.x);
             const image_y: u16 = @intCast(pixel_y + rect.y);
             const i = image_x + (image_y * image.getWidth());
@@ -188,18 +194,17 @@ pub fn convertImageBitmap16Bpp(
     // Validate image and handle size
     if (!image.isValid()) {
         return ConvertImageBitmap16BppError.InvalidImage;
-    }
-    else if (!options.allow_empty and image.isEmpty()) {
+    } else if (!options.allow_empty and image.isEmpty()) {
         return ConvertImageBitmap16BppError.EmptyImage;
     }
     const rect: RectU16 = options.rect orelse image.getRect();
-    if(!image.getRect().containsRect(rect)) {
+    if (!image.getRect().containsRect(rect)) {
         return ConvertImageBitmap16BppError.InvalidRect;
     }
     // Encode image data
     var data = try allocator.alloc(ColorRgb555, image.getSizePixels());
-    for(0..rect.height) |pixel_y| {
-        for(0..rect.width) |pixel_x| {
+    for (0..rect.height) |pixel_y| {
+        for (0..rect.width) |pixel_x| {
             const image_x: u16 = @intCast(pixel_x + rect.x);
             const image_y: u16 = @intCast(pixel_y + rect.y);
             const i = image_x + (image_y * image.getWidth());
@@ -226,20 +231,18 @@ pub const ConvertImageBitmap8BppStep = struct {
         output_path: []const u8,
         options: ConvertImageBitmap8BppOptions,
     };
-    
+
     step: std.Build.Step,
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageBitmap8BppOptions,
-    
+
     pub fn create(b: *std.Build, options: Options) *ConvertImageBitmap8BppStep {
         const step_name = options.name orelse b.fmt(
             "ConvertImageBitmap8BppStep {s} -> {s}",
             .{ options.image_path, options.output_path },
         );
-        const convert_step = (
-            b.allocator.create(ConvertImageBitmap8BppStep) catch @panic("OOM")
-        );
+        const convert_step = (b.allocator.create(ConvertImageBitmap8BppStep) catch @panic("OOM"));
         convert_step.* = .{
             .image_path = options.image_path,
             .output_path = options.output_path,
@@ -253,7 +256,7 @@ pub const ConvertImageBitmap8BppStep = struct {
         };
         return convert_step;
     }
-    
+
     fn make(
         step: *std.Build.Step,
         make_options: std.Build.Step.MakeOptions,
@@ -265,8 +268,13 @@ pub const ConvertImageBitmap8BppStep = struct {
         );
         var node = make_options.progress_node.start(node_name, 1);
         defer node.end();
+
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
+        const std_io = threaded.io();
         try convertSaveImageBitmap8BppPath(
             step.owner.allocator,
+            std_io,
             self.image_path,
             self.output_path,
             self.options,
@@ -282,20 +290,18 @@ pub const ConvertImageBitmap16BppStep = struct {
         output_path: []const u8,
         options: ConvertImageBitmap16BppOptions,
     };
-    
+
     step: std.Build.Step,
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageBitmap16BppOptions,
-    
+
     pub fn create(b: *std.Build, options: Options) *ConvertImageBitmap16BppStep {
         const step_name = options.name orelse b.fmt(
             "ConvertImageBitmap16BppStep {s} -> {s}",
             .{ options.image_path, options.output_path },
         );
-        const convert_step = (
-            b.allocator.create(ConvertImageBitmap16BppStep) catch @panic("OOM")
-        );
+        const convert_step = (b.allocator.create(ConvertImageBitmap16BppStep) catch @panic("OOM"));
         convert_step.* = .{
             .image_path = options.image_path,
             .output_path = options.output_path,
@@ -309,7 +315,7 @@ pub const ConvertImageBitmap16BppStep = struct {
         };
         return convert_step;
     }
-    
+
     fn make(
         step: *std.Build.Step,
         make_options: std.Build.Step.MakeOptions,

@@ -7,9 +7,7 @@ const gba = @import("gba.zig");
 /// routine (ISR) ARM function pointer.
 /// ZigGBA initializes this at startup to point to `isr_default`.
 /// Don't change this unless you're sure you know what you're doing!
-pub const isr_ptr: *volatile *const fn() callconv(.c) void = (
-    @ptrCast(gba.mem.io.reg_isr_main)
-);
+pub const isr_ptr: *volatile *const fn () callconv(.c) void = (@ptrCast(gba.mem.io.reg_isr_main));
 
 /// Default interrupt service routine, implemented in assembly.
 /// By default, this function is called by hardware in ARM mode to handle
@@ -28,7 +26,7 @@ pub fn isr_default_redirect_null(_: InterruptFlags) callconv(.c) void {}
 /// Pointer to an interrupt handler function called by `isr_default_redirect`.
 /// Set this to something other than `isr_default_redirect_null` to implement
 /// your own interrupt handler.
-pub extern var isr_default_redirect: *const fn(InterruptFlags) callconv(.c) void;
+pub extern var isr_default_redirect: *const fn (InterruptFlags) callconv(.c) void;
 
 /// Enumeration of hardware interrupts.
 /// See also `InterruptFlags`.
@@ -111,39 +109,38 @@ pub const InterruptFlags = packed struct(u16) {
     /// this register.
     keypad: bool = false,
     /// Game pak (external IRQ source) interrupt.
-    /// Interrupt is raised when the cartridge is removed from the GBA. 
+    /// Interrupt is raised when the cartridge is removed from the GBA.
     gamepak: bool = false,
     /// Unused bits.
     _: u2 = 0,
-    
+
     /// Get the bit associated with a given interrupt.
     pub fn get(self: InterruptFlags, interrupt: Interrupt) bool {
         const bits: u16 = @bitCast(self);
         return ((bits >> @intFromEnum(interrupt)) & 1) != 0;
     }
-    
+
     /// Assign the bit associated with a given interrupt to 1.
     pub fn set(self: *InterruptFlags, interrupt: Interrupt) void {
         const bits: u16 = @bitCast(self);
         self.* = @bitCast(bits | (1 << @intFromEnum(interrupt)));
     }
-    
+
     /// Assign the bit associated with a given interrupt to 0.
     pub fn unset(self: *InterruptFlags, interrupt: Interrupt) void {
         const bits: u16 = @bitCast(self);
         self.* = @bitCast(bits & ~(1 << @intFromEnum(interrupt)));
     }
-    
+
     /// Assign the bit associated with a given interrupt to a given value.
     pub inline fn assign(self: *InterruptFlags, interrupt: Interrupt, value: bool) void {
-        if(value) {
+        if (value) {
             self.set(interrupt);
-        }
-        else {
+        } else {
             self.unset(interrupt);
         }
     }
-    
+
     /// Get a new `InterruptFlags` which has only those flags set which are
     /// set in both `a` and `b`.
     pub inline fn andFlags(a: InterruptFlags, b: InterruptFlags) InterruptFlags {
@@ -151,7 +148,7 @@ pub const InterruptFlags = packed struct(u16) {
         const bits_b: u16 = @bitCast(b);
         return @bitCast(bits_a & bits_b);
     }
-    
+
     /// Get a new `InterruptFlags` which has only those flags set which are
     /// set in `a`, in `b`, or both.
     pub inline fn orFlags(a: InterruptFlags, b: InterruptFlags) InterruptFlags {
@@ -159,7 +156,7 @@ pub const InterruptFlags = packed struct(u16) {
         const bits_b: u16 = @bitCast(b);
         return @bitCast(bits_a | bits_b);
     }
-    
+
     /// Get a new `InterruptFlags` which has only those flags set which are
     /// set in either `a` or `b`, and not in both.
     pub inline fn xorFlags(a: InterruptFlags, b: InterruptFlags) InterruptFlags {

@@ -2,8 +2,8 @@ const std = @import("std");
 const Image = @import("image.zig").Image;
 const ColorRgba32 = @import("color.zig").ColorRgba32;
 const Palettizer = @import("color.zig").Palettizer;
-const Tile4Bpp = @import("../gba/display.zig").Tile4Bpp;
-const Tile8Bpp = @import("../gba/display.zig").Tile8Bpp;
+const Tile4Bpp = @import("../src/gba/display.zig").Tile4Bpp;
+const Tile8Bpp = @import("../src/gba/display.zig").Tile8Bpp;
 
 const ConvertImageTilesOptions = struct {
     /// Used to resolve palette indices from colors in the image.
@@ -27,7 +27,7 @@ const ConvertImageTilesOutput = struct {
     count: u16,
 };
 
-const ConvertImageTilesError = error {
+const ConvertImageTilesError = error{
     /// The image width and height were not both multiples of 8 pixels,
     /// and the "pad_tiles" option was not used.
     UnexpectedImageSize,
@@ -40,9 +40,8 @@ const ConvertImageTilesError = error {
     ImageTooLarge,
 };
 
-
 /// Errors that may be produced by `convertImageTiles4Bpp`.
-pub const ConvertImageTiles4BppError = ConvertImageTilesError || error {
+pub const ConvertImageTiles4BppError = ConvertImageTilesError || error{
     /// Palettizer returned a color index greater than 15.
     UnexpectedPaletteIndex,
 };
@@ -54,11 +53,12 @@ pub const ConvertImageTiles8BppError = ConvertImageTilesError;
 /// an image file path to read image data from.
 pub fn convertImageTiles4BppPath(
     allocator: std.mem.Allocator,
+    std_io: std.Io,
     image_path: []const u8,
     options: ConvertImageTiles4BppOptions,
 ) ![]Tile4Bpp {
-    var image = try Image.fromFilePath(allocator, image_path);
-    defer image.deinit();
+    var image = try Image.fromFilePath(allocator, std_io, image_path);
+    defer image.deinit(allocator);
     return convertImageTiles4Bpp(allocator, image, options);
 }
 
@@ -67,11 +67,17 @@ pub fn convertImageTiles4BppPath(
 /// to write the resulting data to.
 pub fn convertSaveImageTiles4BppPath(
     allocator: std.mem.Allocator,
+    std_io: std.Io,
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageTiles4BppOptions,
 ) !void {
-    const tiles = try convertImageTiles4BppPath(allocator, image_path, options);
+    const tiles = try convertImageTiles4BppPath(
+        allocator,
+        std_io,
+        image_path,
+        options,
+    );
     defer allocator.free(tiles);
     var file = try std.fs.cwd().createFile(output_path, .{});
     defer file.close();
@@ -84,22 +90,17 @@ fn validateImageTileCount(
     image: Image,
     options: OptionsT,
 ) ErrT!usize {
-    if(!image.isValid()) {
+    if (!image.isValid()) {
         return ErrT.InvalidImage;
-    }
-    else if(!options.allow_empty and image.isEmpty()) {
+    } else if (!options.allow_empty and image.isEmpty()) {
         return ErrT.EmptyImage;
-    }
-    else if(
-        ((image.getWidth() & 0x7) != 0) or
-        ((image.getHeight() & 0x7) != 0)
-    ) {
+    } else if (((image.getWidth() & 0x7) != 0) or
+        ((image.getHeight() & 0x7) != 0))
+    {
         return ErrT.UnexpectedImageSize;
     }
-    return (
-        @as(usize, image.getWidth() >> 3) *
-        @as(usize, image.getHeight() >> 3)
-    );
+    return (@as(usize, image.getWidth() >> 3) *
+        @as(usize, image.getHeight() >> 3));
 }
 
 /// Convert an arbitrary image to uncompressed tile data which may be
@@ -127,18 +128,14 @@ pub fn convertImageTiles4Bpp(
     for (0..tile_count) |tile_i| {
         for (0..8) |tile_pixel_y| {
             for (0..8) |tile_pixel_x| {
-                const image_x: u16 = @intCast(
-                    ((tile_i % image_width_tiles) << 3) + tile_pixel_x
-                );
-                const image_y: u16 = @intCast(
-                    ((tile_i / image_width_tiles) << 3) + tile_pixel_y
-                );
+                const image_x: u16 = @intCast(((tile_i % image_width_tiles) << 3) + tile_pixel_x);
+                const image_y: u16 = @intCast(((tile_i / image_width_tiles) << 3) + tile_pixel_y);
                 const pal_index = options.palettizer.get(.{
                     .color = image.getPixelColor(image_x, image_y),
                     .x = image_x,
                     .y = image_y,
                 });
-                if(pal_index >= 16) {
+                if (pal_index >= 16) {
                     return ConvertImageTiles4BppError.UnexpectedPaletteIndex;
                 }
                 tiles[tile_i].setPixel8(
@@ -156,11 +153,12 @@ pub fn convertImageTiles4Bpp(
 /// an image file path to read image data from.
 pub fn convertImageTiles8BppPath(
     allocator: std.mem.Allocator,
+    std_io: std.Io,
     image_path: []const u8,
     options: ConvertImageTiles8BppOptions,
 ) ![]Tile8Bpp {
-    var image = try Image.fromFilePath(allocator, image_path);
-    defer image.deinit();
+    var image = try Image.fromFilePath(allocator, std_io, image_path);
+    defer image.deinit(allocator);
     return convertImageTiles8Bpp(allocator, image, options);
 }
 
@@ -169,11 +167,12 @@ pub fn convertImageTiles8BppPath(
 /// to write the resulting data to.
 pub fn convertSaveImageTiles8BppPath(
     allocator: std.mem.Allocator,
+    std_io: std.Io,
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageTiles8BppOptions,
 ) !void {
-    const tiles = try convertImageTiles8BppPath(allocator, image_path, options);
+    const tiles = try convertImageTiles8BppPath(allocator, std_io, image_path, options);
     defer allocator.free(tiles);
     var file = try std.fs.cwd().createFile(output_path, .{});
     defer file.close();
@@ -205,12 +204,8 @@ pub fn convertImageTiles8Bpp(
     for (0..tile_count) |tile_i| {
         for (0..8) |tile_pixel_y| {
             for (0..8) |tile_pixel_x| {
-                const image_x: u16 = @intCast(
-                    ((tile_i % image_width_tiles) << 3) + tile_pixel_x
-                );
-                const image_y: u16 = @intCast(
-                    ((tile_i / image_width_tiles) << 3) + tile_pixel_y
-                );
+                const image_x: u16 = @intCast(((tile_i % image_width_tiles) << 3) + tile_pixel_x);
+                const image_y: u16 = @intCast(((tile_i / image_width_tiles) << 3) + tile_pixel_y);
                 const pal_index = options.palettizer.get(.{
                     .color = image.getPixelColor(image_x, image_y),
                     .x = image_x,
@@ -235,20 +230,22 @@ pub const ConvertImageTiles4BppStep = struct {
         output_path: []const u8,
         options: ConvertImageTiles4BppOptions,
     };
-    
+
     step: std.Build.Step,
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageTiles4BppOptions,
-    
+    io: std.Io,
+
     pub fn create(b: *std.Build, options: Options) *ConvertImageTiles4BppStep {
         const step_name = options.name orelse b.fmt(
             "ConvertImageTiles4BppStep {s} -> {s}",
             .{ options.image_path, options.output_path },
         );
-        const convert_step = (
-            b.allocator.create(ConvertImageTiles4BppStep) catch @panic("OOM")
-        );
+        const convert_step = (b.allocator.create(ConvertImageTiles4BppStep) catch @panic("OOM"));
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
+        const io = threaded.io();
         convert_step.* = .{
             .image_path = options.image_path,
             .output_path = options.output_path,
@@ -259,10 +256,11 @@ pub const ConvertImageTiles4BppStep = struct {
                 .makeFn = make,
                 .name = step_name,
             }),
+            .io = io,
         };
         return convert_step;
     }
-    
+
     fn make(
         step: *std.Build.Step,
         make_options: std.Build.Step.MakeOptions,
@@ -274,8 +272,10 @@ pub const ConvertImageTiles4BppStep = struct {
         );
         var node = make_options.progress_node.start(node_name, 1);
         defer node.end();
+
         try convertSaveImageTiles4BppPath(
             step.owner.allocator,
+            self.io,
             self.image_path,
             self.output_path,
             self.options,
@@ -291,20 +291,22 @@ pub const ConvertImageTiles8BppStep = struct {
         output_path: []const u8,
         options: ConvertImageTiles8BppOptions,
     };
-    
+
     step: std.Build.Step,
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageTiles8BppOptions,
-    
+    io: std.Io,
+
     pub fn create(b: *std.Build, options: Options) *ConvertImageTiles8BppStep {
         const step_name = options.name orelse b.fmt(
             "ConvertImageTiles8BppStep {s} -> {s}",
             .{ options.image_path, options.output_path },
         );
-        const convert_step = (
-            b.allocator.create(ConvertImageTiles8BppStep) catch @panic("OOM")
-        );
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
+        const io = threaded.io();
+        const convert_step = (b.allocator.create(ConvertImageTiles8BppStep) catch @panic("OOM"));
         convert_step.* = .{
             .image_path = options.image_path,
             .output_path = options.output_path,
@@ -315,10 +317,11 @@ pub const ConvertImageTiles8BppStep = struct {
                 .makeFn = make,
                 .name = step_name,
             }),
+            .io = io,
         };
         return convert_step;
     }
-    
+
     fn make(
         step: *std.Build.Step,
         make_options: std.Build.Step.MakeOptions,
@@ -330,8 +333,10 @@ pub const ConvertImageTiles8BppStep = struct {
         );
         var node = make_options.progress_node.start(node_name, 1);
         defer node.end();
+
         try convertSaveImageTiles8BppPath(
             step.owner.allocator,
+            self.io,
             self.image_path,
             self.output_path,
             self.options,

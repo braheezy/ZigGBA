@@ -13,9 +13,7 @@ pub const mode3_width = 240;
 pub const mode3_height = 160;
 
 /// Size of the mode 3 surface in pixels, represented as a vector.
-pub const mode3_size: gba.math.Vec2U8 = (
-    .init(mode3_width, mode3_height)
-);
+pub const mode3_size: gba.math.Vec2U8 = (.init(mode3_width, mode3_height));
 
 /// Width of a mode 4 surface, in pixels.
 pub const mode4_width = 240;
@@ -24,9 +22,7 @@ pub const mode4_width = 240;
 pub const mode4_height = 160;
 
 /// Size of a mode 4 surface in pixels, represented as a vector.
-pub const mode4_size: gba.math.Vec2U8 = (
-    .init(mode4_width, mode4_height)
-);
+pub const mode4_size: gba.math.Vec2U8 = (.init(mode4_width, mode4_height));
 
 /// Width of a mode 5 surface, in pixels.
 pub const mode5_width = 160;
@@ -35,27 +31,25 @@ pub const mode5_width = 160;
 pub const mode5_height = 128;
 
 /// Size of a mode 5 surface in pixels, represented as a vector.
-pub const mode5_size: gba.math.Vec2U8 = (
-    .init(mode3_width, mode5_height)
-);
+pub const mode5_size: gba.math.Vec2U8 = (.init(mode3_width, mode5_height));
 
 /// Helper for representing a pair of front and back buffers, as used by
 /// graphics modes 4 and 5.
 pub fn SurfacePair(comptime SurfaceT: type) type {
     return struct {
         const Self = @This();
-        
+
         /// Refers to the two surface buffers available for a given
         /// graphics mode.
         buffers: [2]SurfaceT,
         /// Indicate which buffer is currently acting as the back buffer,
         /// i.e. the one which is not currently being displayed.
         back: u1 = 0,
-        
+
         pub fn init(back: u1, buffers: [2]SurfaceT) Self {
             return .{ .buffers = buffers, .back = back };
         }
-        
+
         /// Flip the front and back buffers.
         /// Modifies `gba.display.ctrl.surface_select`.
         /// (This corresponds to REG_DISPCNT.)
@@ -64,14 +58,14 @@ pub fn SurfacePair(comptime SurfaceT: type) type {
             gba.display.ctrl.surface_select = self.back;
             self.back = ~self.back;
         }
-        
+
         /// Get the surface currently being used as the front buffer.
         /// When the corresponding graphics mode is active, this is the buffer
         /// which is currently being displayed on the screen.
         pub fn getFront(self: Self) SurfaceT {
             return self.buffers[~self.back];
         }
-        
+
         /// Get the surface currently being used as the back buffer.
         pub fn getBack(self: Self) SurfaceT {
             return self.buffers[self.back];

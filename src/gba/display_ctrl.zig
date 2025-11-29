@@ -17,7 +17,7 @@ pub const Mode = enum(u3) {
         /// modes 3, 4, and 5.
         bitmap = 2,
     };
-    
+
     /// Type for each background in each graphics mode.
     pub const BackgroundTypes: [6][4]BackgroundType = .{
         @splat(.normal),
@@ -27,7 +27,7 @@ pub const Mode = enum(u3) {
         .{ .unavailable, .unavailable, .bitmap, .unavailable },
         .{ .unavailable, .unavailable, .bitmap, .unavailable },
     };
-    
+
     /// Tiled mode.
     /// Provides four normal background layers (0, 1, 2, 3)
     /// and no affine layers.
@@ -48,27 +48,27 @@ pub const Mode = enum(u3) {
     /// Bitmap mode.
     /// Provides two 160x128 pixel 16bpp frames.
     mode_5 = 5,
-    
+
     /// Get the type of a given background in a certain display mode.
     pub fn getBackgroundType(self: Mode, bg_index: u2) BackgroundType {
-        return switch(self) {
+        return switch (self) {
             .mode_0 => .normal,
-            .mode_1 => switch(bg_index) {
+            .mode_1 => switch (bg_index) {
                 0, 1 => .normal,
                 2 => .affine,
                 else => .unavailable,
             },
-            .mode_2 => switch(bg_index) {
+            .mode_2 => switch (bg_index) {
                 2, 3 => .affine,
                 else => .unavailable,
             },
-            else => switch(bg_index) {
+            else => switch (bg_index) {
                 2 => .bitmap,
                 else => .unavailable,
             },
         };
     }
-    
+
     /// Get the types of all four backgrounds in a certain display mode.
     pub fn getBackgroundTypeArray(self: Mode) [4]BackgroundType {
         return BackgroundTypes[@intFromEnum(self)];
@@ -86,7 +86,7 @@ pub const Control = packed struct(u16) {
         /// Object charblock data is represented sequentially.
         map_1d = 1,
     };
-    
+
     /// Graphics mode. See `gba.display.Mode`.
     mode: Mode = .mode_0,
     /// Read-only. Should always be false.
@@ -124,7 +124,7 @@ pub const Control = packed struct(u16) {
     /// Enable the object window.
     /// See `gba.display.window` and `gba.display.Object.effect`.
     window_obj: bool = false,
-    
+
     /// Options related specifically to graphics mode 0.
     /// See `gba.display.Mode.mode_0`.
     pub const InitMode0Options = struct {
@@ -151,7 +151,7 @@ pub const Control = packed struct(u16) {
         /// Enable the object window.
         window_obj: bool = false,
     };
-    
+
     /// Options related specifically to graphics mode 1.
     /// See `gba.display.Mode.mode_1`.
     pub const InitMode1Options = struct {
@@ -176,7 +176,7 @@ pub const Control = packed struct(u16) {
         /// Enable the object window.
         window_obj: bool = false,
     };
-    
+
     /// Options related specifically to graphics mode 2.
     /// See `gba.display.Mode.mode_2`.
     pub const InitMode2Options = struct {
@@ -199,7 +199,7 @@ pub const Control = packed struct(u16) {
         /// Enable the object window.
         window_obj: bool = false,
     };
-    
+
     /// Options related specifically to graphics mode 3.
     /// See `gba.display.Mode.mode_3`.
     pub const InitMode3Options = struct {
@@ -218,7 +218,7 @@ pub const Control = packed struct(u16) {
         /// Enable the object window.
         window_obj: bool = false,
     };
-    
+
     /// Options related specifically to graphics mode 4.
     /// See `gba.display.Mode.mode_4`.
     pub const InitMode4Options = struct {
@@ -239,12 +239,12 @@ pub const Control = packed struct(u16) {
         /// Enable the object window.
         window_obj: bool = false,
     };
-    
+
     /// Options related specifically to graphics mode 5.
     /// See `gba.display.Mode.mode_5`.
     /// Mode 5 related options are the same as mode 4.
     pub const InitMode5Options = InitMode4Options;
-    
+
     /// Initialize with options related specifically to graphics mode 0.
     /// See `gba.display.Mode.mode_0`.
     pub fn initMode0(options: InitMode0Options) Control {
@@ -263,7 +263,7 @@ pub const Control = packed struct(u16) {
             .window_obj = options.window_obj,
         };
     }
-    
+
     /// Initialize with options related specifically to graphics mode 1.
     /// See `gba.display.Mode.mode_1`.
     pub fn initMode1(options: InitMode1Options) Control {
@@ -281,7 +281,7 @@ pub const Control = packed struct(u16) {
             .window_obj = options.window_obj,
         };
     }
-    
+
     /// Initialize with options related specifically to graphics mode 2.
     /// See `gba.display.Mode.mode_2`.
     pub fn initMode2(options: InitMode2Options) Control {
@@ -298,7 +298,7 @@ pub const Control = packed struct(u16) {
             .window_obj = options.window_obj,
         };
     }
-    
+
     /// Initialize with options related specifically to graphics mode 3.
     /// Sets the `bg2` flag to true, to enable bitmap display.
     /// See `gba.display.Mode.mode_3`.
@@ -315,7 +315,7 @@ pub const Control = packed struct(u16) {
             .window_obj = options.window_obj,
         };
     }
-    
+
     /// Initialize with options related specifically to graphics mode 4.
     /// Sets the `bg2` flag to true, to enable bitmap display.
     /// See `gba.display.Mode.mode_4`.
@@ -333,7 +333,7 @@ pub const Control = packed struct(u16) {
             .window_obj = options.window_obj,
         };
     }
-    
+
     /// Initialize with options related specifically to graphics mode 5.
     /// Sets the `bg2` flag to true, to enable bitmap display.
     /// See `gba.display.Mode.mode_5`.
@@ -351,7 +351,7 @@ pub const Control = packed struct(u16) {
             .window_obj = options.window_obj,
         };
     }
-    
+
     /// Helper function relevant to graphics modes 4 and 5.
     /// Flips the `bitmap_select` bit, thereby swapping the front and back
     /// buffers in double-buffered bitmap display modes.
@@ -360,5 +360,5 @@ pub const Control = packed struct(u16) {
     }
 };
 
-/// Display control register. Corresponds to REG_DISPCNT.
+/// Display control register.
 pub const ctrl: *volatile Control = @ptrCast(gba.mem.io.reg_dispcnt);

@@ -11,7 +11,7 @@ pub const CpuSetOptions = packed struct(u32) {
         /// Operate on 32-bit words.
         bits_32 = 1,
     };
-    
+
     /// The number of words or half-words to write, depending on `size`.
     count: u21,
     /// Unused bits.
@@ -52,25 +52,22 @@ pub fn cpuSet(
 ) void {
     assert(options.size == .bits_16 or (@intFromPtr(source) & 0x3 == 0));
     assert(options.size == .bits_16 or (@intFromPtr(destination) & 0x3 == 0));
-    if(@inComptime() or comptime(builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
+    if (@inComptime() or comptime (builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
         const count = options.count << @intFromEnum(options.size);
-        if(options.fixed) {
+        if (options.fixed) {
             @memset(destination[0..count], source[0]);
-        }
-        else {
+        } else {
             @memcpy(destination[0..count], source[0..count]);
         }
-    }
-    else {
+    } else {
         // TODO: All bios calls should be assumed to clobber r0, r1, r3
-        asm volatile (
-            "swi 0x0b"
+        const raw_options: u32 = @bitCast(options);
+        asm volatile ("swi 0x0b"
             :
             : [source] "{r0}" (source),
               [destination] "{r1}" (destination),
-              [options] "{r2}" (options),
-            : "r0", "r1", "r2", "r3", "cc", "memory"
-        );
+              [options] "{r2}" (raw_options),
+            : .{ .r0 = true, .r1 = true, .r2 = true, .r3 = true, .memory = true });
     }
 }
 
@@ -84,26 +81,23 @@ pub fn cpuFastSet(
     destination: *align(4) volatile anyopaque,
     options: CpuFastSetOptions,
 ) void {
-    if(@inComptime() or comptime(builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
+    if (@inComptime() or comptime (builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
         // CpuFastSet rounds up to a multiple of 8 words.
         const count_lsb = options.count & 0x7;
         const count = (options.count & 0x1ffff8) + @intFromBool(count_lsb != 0);
-        if(options.fixed) {
+        if (options.fixed) {
             @memset(destination[0..count], source[0]);
-        }
-        else {
+        } else {
             @memcpy(destination[0..count], source[0..count]);
         }
-    }
-    else {
-        asm volatile (
-            "swi 0x0c"
+    } else {
+        const raw_options: u32 = @bitCast(options);
+        asm volatile ("swi 0x0c"
             :
             : [source] "{r0}" (source),
               [destination] "{r1}" (destination),
-              [options] "{r2}" (options),
-            : "r0", "r1", "r2", "r3", "cc", "memory"
-        );
+              [options] "{r2}" (raw_options),
+            : .{ .r0 = true, .r1 = true, .r2 = true, .r3 = true, .memory = true });
     }
 }
 

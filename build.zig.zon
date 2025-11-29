@@ -2,11 +2,17 @@
     .name = .ziggba,
     .version = "0.0.0",
     .fingerprint = 0x94ed0cc5e826ab7, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.14.1",
+    .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .zigimg = .{
-            .url = "git+https://github.com/pineapplemachine/zigimg.git#7cdf12e0165f8019160119f6d3a7367a482faa94",
-            .hash = "zigimg-0.1.0-8_eo2oXXEgAXqKBEuHSH2AodfXVEnCWn5JSGQKkmh1g4",
+            .path = "zigimg",
+            // .url = "git+https://github.com/pineapplemachine/zigimg.git#7cdf12e0165f8019160119f6d3a7367a482faa94",
+            // .hash = "zigimg-0.1.0-8_eo2oXXEgAXqKBEuHSH2AodfXVEnCWn5JSGQKkmh1g4",
+        },
+        .cc_helper = .{
+            .path = "cc_helper",
+            // .url = "git+https://codeberg.org/xbx/cc_helper.git#1076ea283acb25974346acd467599aeaf832ed01",
+            // .hash = "cc_helper-0.0.1-JfF0JHEqAQDP3PvsaYXbQOjpZthAR5AOTwGDdZebxyRE",
         },
     },
     .paths = .{

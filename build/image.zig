@@ -2,8 +2,8 @@ const zigimg = @import("zigimg").zigimg;
 const std = @import("std");
 const assert = @import("std").debug.assert;
 const ColorRgba32 = @import("color.zig").ColorRgba32;
-const RectU16 = @import("../gba/math.zig").RectU16;
-const Vec2U16 = @import("../gba/math.zig").Vec2U16;
+const RectU16 = @import("../src/gba/math.zig").RectU16;
+const Vec2U16 = @import("../src/gba/math.zig").Vec2U16;
 
 pub const ConvertImageBitmap8BppOptions = @import("image_bitmap.zig").ConvertImageBitmap8BppOptions;
 pub const ConvertImageBitmap16BppOptions = @import("image_bitmap.zig").ConvertImageBitmap16BppOptions;
@@ -38,65 +38,65 @@ pub const ConvertImageTiles8BppStep = @import("image_tiles.zig").ConvertImageTil
 /// while providing the same interface.
 pub const Image = struct {
     data: zigimg.Image,
-    
+
     /// Load image from a file path.
     pub fn fromFilePath(
         allocator: std.mem.Allocator,
+        std_io: std.Io,
         path: []const u8,
-    ) (
-        std.mem.Allocator.Error ||
+    ) (std.mem.Allocator.Error ||
         zigimg.Image.ReadError ||
-        std.fs.File.OpenError
-    )!Image {
-        const data = try zigimg.Image.fromFilePath(allocator, path);
+        std.fs.File.OpenError)!Image {
+        var buffer: [2048]u8 = undefined;
+        const data = try zigimg.Image.fromFilePath(allocator, std_io, path, &buffer);
         return .{ .data = data };
     }
-    
+
     /// Check whether the instance possesses valid image data.
     pub fn isValid(self: Image) bool {
         return self.data.pixelFormat() != .invalid;
     }
-    
+
     /// Free memory in use by this image.
-    pub fn deinit(self: *Image) void {
-        self.data.deinit();
+    pub fn deinit(self: *Image, allocator: std.mem.Allocator) void {
+        self.data.deinit(allocator);
     }
-    
+
     /// Get the width of the image, in pixels.
     pub fn getWidth(self: Image) u16 {
         return @intCast(self.data.width);
     }
-    
+
     /// Get the height of the image, in pixels.
     pub fn getHeight(self: Image) u16 {
         return @intCast(self.data.height);
     }
-    
+
     /// Get a rectangle representing the bounds of the image.
     pub fn getRect(self: Image) RectU16 {
         return .init(0, 0, self.getWidth(), self.getHeight());
     }
-    
+
     /// Get a vector representing the size of the image.
     pub fn getSize(self: Image) Vec2U16 {
         return .init(self.getWidth(), self.getHeight());
     }
-    
+
     /// Returns the number of pixels, i.e. `width * height`.
     pub fn getSizePixels(self: Image) u32 {
         return @as(u32, self.getWidth()) * @as(u32, self.getHeight());
     }
-    
+
     /// Returns true when width or height is zero.
     pub fn isEmpty(self: Image) bool {
         return self.getWidth() <= 0 or self.getHeight() <= 0;
     }
-    
+
     /// Get whether a pixel coordinate is within the image bounds.
     pub fn isInBounds(self: Image, x: u16, y: u16) bool {
         return x < self.getWidth() and y < self.getHeight();
     }
-    
+
     /// Get the color of a pixel at a given coordinate.
     pub fn getPixelColor(self: Image, x: u16, y: u16) ColorRgba32 {
         assert(self.isValid());

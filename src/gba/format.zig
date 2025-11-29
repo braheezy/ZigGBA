@@ -6,9 +6,7 @@ test {
 }
 
 /// Default value for `FormatDecimalIntOptions.decimal_digits`.
-pub const decimal_digits_ascii: [10]u8 = (
-    .{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' }
-);
+pub const decimal_digits_ascii: [10]u8 = (.{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' });
 
 /// Default value for `FormatHexIntOptions.hex_digits`.
 pub const hex_digits_ascii: [16]u8 = .{
@@ -19,11 +17,11 @@ pub const hex_digits_ascii: [16]u8 = .{
 /// Get the number of digits in a number's decimal representation.
 /// Does not count the sign, only digits.
 pub fn lenDecimalI32(n: i32) u4 {
-    if(n == -2147483648) {
+    if (n == -2147483648) {
         return 10;
     }
-    const n_abs: i32 = if(n >= 0) n else -%n;
-    return switch(n_abs) {
+    const n_abs: i32 = if (n >= 0) n else -%n;
+    return switch (n_abs) {
         0...9 => 1,
         10...99 => 2,
         100...999 => 3,
@@ -41,10 +39,9 @@ pub fn lenDecimalI32(n: i32) u4 {
 /// hexadecimal representation.
 /// Does not count the sign, only digits.
 pub fn lenHexI32(n: i32) u4 {
-    if(n == -0x80000000) {
+    if (n == -0x80000000) {
         return 8;
-    }
-    else {
+    } else {
         return lenHexU32(@abs(n));
     }
 }
@@ -52,28 +49,21 @@ pub fn lenHexI32(n: i32) u4 {
 /// Get the number of digits in an unsigned integer's
 /// hexadecimal representation.
 pub fn lenHexU32(n: u32) u4 {
-    if((n & 0xf0000000) != 0) {
+    if ((n & 0xf0000000) != 0) {
         return 8;
-    }
-    else if((n & 0x0f000000) != 0) {
+    } else if ((n & 0x0f000000) != 0) {
         return 7;
-    }
-    else if((n & 0x00f00000) != 0) {
+    } else if ((n & 0x00f00000) != 0) {
         return 6;
-    }
-    else if((n & 0x000f0000) != 0) {
+    } else if ((n & 0x000f0000) != 0) {
         return 5;
-    }
-    else if((n & 0x0000f000) != 0) {
+    } else if ((n & 0x0000f000) != 0) {
         return 4;
-    }
-    else if((n & 0x00000f00) != 0) {
+    } else if ((n & 0x00000f00) != 0) {
         return 3;
-    }
-    else if((n & 0x000000f0) != 0) {
+    } else if ((n & 0x000000f0) != 0) {
         return 2;
-    }
-    else {
+    } else {
         return 1;
     }
 }
@@ -114,15 +104,15 @@ pub fn formatDecimalI32(
     @setRuntimeSafety(false);
     var i: u32 = 0;
     // Special case: 0
-    if(value == 0) {
-        const z_len: u2 = if(options.always_sign) 2 else 1;
-        if(options.pad_left_len > z_len) {
-            for(0..options.pad_left_len - z_len) |_| {
+    if (value == 0) {
+        const z_len: u2 = if (options.always_sign) 2 else 1;
+        if (options.pad_left_len > z_len) {
+            for (0..options.pad_left_len - z_len) |_| {
                 buffer[i] = options.pad_left_char;
                 i += 1;
             }
         }
-        if(options.always_sign) {
+        if (options.always_sign) {
             buffer[i] = options.sign_positive_char;
             i += 1;
         }
@@ -130,9 +120,9 @@ pub fn formatDecimalI32(
         return i + 1;
     }
     // Special case: Avoid overflow with -2147483648
-    else if(value == -2147483648) {
-        if(options.pad_left_len > 11) {
-            for(0..options.pad_left_len - 11) |_| {
+    else if (value == -2147483648) {
+        if (options.pad_left_len > 11) {
+            for (0..options.pad_left_len - 11) |_| {
                 buffer[i] = options.pad_left_char;
                 i += 1;
             }
@@ -161,30 +151,25 @@ pub fn formatDecimalI32(
         return i + 1;
     }
     // General case
-    var v_abs: i32 = if(value >= 0) value else -value;
-    var i_end: u32 = (
-        @intFromBool(value < 0 or options.always_sign) +
-        lenDecimalI32(v_abs)
-    );
-    while(i_end < options.pad_left_len) {
+    var v_abs: i32 = if (value >= 0) value else -value;
+    var i_end: u32 = (@intFromBool(value < 0 or options.always_sign) +
+        lenDecimalI32(v_abs));
+    while (i_end < options.pad_left_len) {
         buffer[i] = options.pad_left_char;
         i += 1;
         i_end += 1;
     }
     var i_reverse: i32 = @intCast(i_end - 1);
-    while(v_abs > 0) {
+    while (v_abs > 0) {
         const div10 = gba.bios.div(v_abs, 10);
         assert(div10.remainder < 10);
-        buffer[@intCast(i_reverse)] = (
-            options.decimal_digits[@intCast(div10.remainder)]
-        );
+        buffer[@intCast(i_reverse)] = (options.decimal_digits[@intCast(div10.remainder)]);
         i_reverse -%= 1;
         v_abs = div10.quotient;
     }
-    if(value < 0) {
+    if (value < 0) {
         buffer[@intCast(i_reverse)] = options.sign_negative_char;
-    }
-    else if(options.always_sign) {
+    } else if (options.always_sign) {
         buffer[@intCast(i_reverse)] = options.sign_positive_char;
     }
     return i_end;
@@ -230,39 +215,36 @@ pub fn formatHexI32(
 ) u32 {
     @setRuntimeSafety(false);
     const digits = lenHexI32(value);
-    const len = (
-        options.digits_prefix.len +
+    const len = (options.digits_prefix.len +
         @intFromBool(value < 0 or options.always_sign) +
-        @max(digits, options.pad_zero_len)
-    );
+        @max(digits, options.pad_zero_len));
     var shift: u5 = @as(u5, digits - 1) << 2;
     var i: u32 = 0;
-    if(options.pad_left_len > len) {
-        for(0..options.pad_left_len - len) |_| {
+    if (options.pad_left_len > len) {
+        for (0..options.pad_left_len - len) |_| {
             buffer[i] = options.pad_left_char;
             i += 1;
         }
     }
-    if(value < 0) {
+    if (value < 0) {
         buffer[i] = options.sign_negative_char;
         i += 1;
-    }
-    else if(options.always_sign) {
+    } else if (options.always_sign) {
         buffer[i] = options.sign_positive_char;
         i += 1;
     }
-    for(options.digits_prefix) |prefix_char| {
+    for (options.digits_prefix) |prefix_char| {
         buffer[i] = prefix_char;
         i += 1;
     }
-    if(options.pad_zero_len > digits) {
-        for(0..options.pad_zero_len - digits) |_| {
+    if (options.pad_zero_len > digits) {
+        for (0..options.pad_zero_len - digits) |_| {
             buffer[i] = options.hex_digits[0];
             i += 1;
         }
     }
     const value_abs = @abs(value);
-    for(0..digits) |_| {
+    for (0..digits) |_| {
         buffer[i] = options.hex_digits[@intCast((value_abs >> shift) & 0xf)];
         shift -= 4;
         i += 1;
@@ -279,34 +261,32 @@ pub fn formatHexU32(
 ) u32 {
     @setRuntimeSafety(false);
     const digits = lenHexU32(value);
-    const len = (
-        options.digits_prefix.len +
+    const len = (options.digits_prefix.len +
         @intFromBool(options.always_sign) +
-        @max(digits, options.pad_zero_len)
-    );
+        @max(digits, options.pad_zero_len));
     var shift: u5 = @as(u5, digits - 1) << 2;
     var i: u32 = 0;
-    if(options.pad_left_len > len) {
-        for(0..options.pad_left_len - len) |_| {
+    if (options.pad_left_len > len) {
+        for (0..options.pad_left_len - len) |_| {
             buffer[i] = options.pad_left_char;
             i += 1;
         }
     }
-    if(options.always_sign) {
+    if (options.always_sign) {
         buffer[i] = options.sign_positive_char;
         i += 1;
     }
-    for(options.digits_prefix) |prefix_char| {
+    for (options.digits_prefix) |prefix_char| {
         buffer[i] = prefix_char;
         i += 1;
     }
-    if(options.pad_zero_len > digits) {
-        for(0..options.pad_zero_len - digits) |_| {
+    if (options.pad_zero_len > digits) {
+        for (0..options.pad_zero_len - digits) |_| {
             buffer[i] = options.hex_digits[0];
             i += 1;
         }
     }
-    for(0..digits) |_| {
+    for (0..digits) |_| {
         buffer[i] = options.hex_digits[@intCast((value >> shift) & 0xf)];
         shift -= 4;
         i += 1;

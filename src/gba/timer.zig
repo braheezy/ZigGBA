@@ -61,7 +61,7 @@ pub const Timer = packed struct(u32) {
     counter: u16 = 0,
     /// Corresponds to REG_TMxCNT.
     ctrl: Control = .{},
-    
+
     /// Initialize a `Timer`.
     pub fn init(counter: u16, ctrl: Control) Timer {
         return .{ .counter = counter, .ctrl = ctrl };

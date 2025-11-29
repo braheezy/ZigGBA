@@ -5,17 +5,17 @@
 //!
 //! ```zig
 //! const gba = @import("gba.zig");
-//! 
+//!
 //! pub export fn main() void {
 //!     // Initialize an object to contain input state.
 //!     var input: gba.input.BufferedKeysState = .{};
-//! 
+//!
 //!     while (true) {
 //!         // Wait for the next frame.
 //!         gba.display.naiveVSync();
 //!         // Update the input state object.
 //!         input.poll();
-//! 
+//!
 //!         if(input.isJustPressed(.start)) {
 //!             // Do something when the start button was just pressed
 //!         }
@@ -59,7 +59,7 @@ pub const KeysState = packed struct(u16) {
         pressed = 0,
         released = 1,
     };
-    
+
     /// State of the system's A (right) face button.
     button_a: KeyState = .released,
     /// State of the system's B (left) face button.
@@ -82,15 +82,15 @@ pub const KeysState = packed struct(u16) {
     button_l: KeyState = .released,
     /// Unused bits.
     _: u6 = 0,
-    
+
     /// Overwrite the object's state with the system's current input state.
     pub fn poll(self: *KeysState) void {
         self.* = state.*;
     }
-    
+
     /// Returns true when a given button was pressed down.
     pub fn isPressed(self: KeysState, key: Key) bool {
-        return switch(key) {
+        return switch (key) {
             .A => self.button_a == .pressed,
             .B => self.button_b == .pressed,
             .select => self.button_select == .pressed,
@@ -103,46 +103,40 @@ pub const KeysState = packed struct(u16) {
             .L => self.button_l == .pressed,
         };
     }
-    
+
     /// Returns true when any of the system's buttons were pressed down.
     pub inline fn isAnyPressed(self: KeysState) bool {
         return @as(u16, @bitCast(self)) != 0x03ff;
     }
-    
+
     /// Returns a signed integer representing the state of the system's
     /// left and right dpad buttons.
     ///
     /// Returns -1 when left is pressed but not right,
     /// +1 when right is pressed but not left, and 0 otherwise.
     pub fn getAxisHorizontal(self: KeysState) i2 {
-        return (
-            @as(i2, if(self.isPressed(.left)) -1 else 0) +
-            @as(i2, if(self.isPressed(.right)) 1 else 0)
-        );
+        return (@as(i2, if (self.isPressed(.left)) -1 else 0) +
+            @as(i2, if (self.isPressed(.right)) 1 else 0));
     }
-    
+
     /// Returns a signed integer representing the state of the system's
     /// up and down dpad buttons.
     ///
     /// Returns -1 when up is pressed but not down,
     /// +1 when down is pressed but not up, and 0 otherwise.
     pub fn getAxisVertical(self: KeysState) i2 {
-        return (
-            @as(i2, if(self.isPressed(.up)) -1 else 0) +
-            @as(i2, if(self.isPressed(.down)) 1 else 0)
-        );
+        return (@as(i2, if (self.isPressed(.up)) -1 else 0) +
+            @as(i2, if (self.isPressed(.down)) 1 else 0));
     }
-    
+
     /// Returns a signed integer representing the state of the system's
     /// L (left) and R (right) shoulder buttons.
     ///
     /// Returns -1 when L is pressed but not R,
     /// +1 when R is pressed but not L, and 0 otherwise.
     pub fn getAxisShoulders(self: KeysState) i2 {
-        return (
-            @as(i2, if(self.isPressed(.L)) -1 else 0) +
-            @as(i2, if(self.isPressed(.R)) 1 else 0)
-        );
+        return (@as(i2, if (self.isPressed(.L)) -1 else 0) +
+            @as(i2, if (self.isPressed(.R)) 1 else 0));
     }
 };
 
@@ -154,7 +148,7 @@ pub const BufferedKeysState = packed struct(u32) {
     current: KeysState = .{},
     /// The previously polled input state.
     previous: KeysState = .{},
-    
+
     /// Poll the system's current input state and update the input state
     /// information accordingly.
     ///
@@ -164,7 +158,7 @@ pub const BufferedKeysState = packed struct(u32) {
         self.previous = self.current;
         self.current = state.*;
     }
-    
+
     /// Poll the system's current input state and return a new
     /// `BufferedKeysState` object representing the subsequent input state.
     pub fn pollNext(self: BufferedKeysState) BufferedKeysState {
@@ -173,32 +167,32 @@ pub const BufferedKeysState = packed struct(u32) {
             .previous = self.current,
         };
     }
-    
+
     /// Returns true when a given button is currently pressed down.
     pub inline fn isPressed(self: BufferedKeysState, key: Key) bool {
         return self.current.isPressed(key);
     }
-    
+
     /// Returns true when a given button was just pressed.
     pub inline fn isJustPressed(self: BufferedKeysState, key: Key) bool {
         return self.current.isPressed(key) and !self.previous.isPressed(key);
     }
-    
+
     /// Returns true when a given button was just released.
     pub inline fn isJustReleased(self: BufferedKeysState, key: Key) bool {
         return self.previous.isPressed(key) and !self.current.isPressed(key);
     }
-    
+
     /// Returns true when any of the system's buttons are currently pressed down.
     pub inline fn isAnyPressed(self: BufferedKeysState) bool {
         return self.current.isAnyPressed();
     }
-    
+
     /// Returns true when any of the system's buttons are currently pressed down.
     pub inline fn isAnyJustPressed(self: BufferedKeysState) bool {
         return self.current.isAnyPressed() and !self.previous.isAnyPressed();
     }
-    
+
     /// Returns a signed integer representing the state of the system's
     /// left and right dpad buttons.
     ///
@@ -207,7 +201,7 @@ pub const BufferedKeysState = packed struct(u32) {
     pub inline fn getAxisHorizontal(self: BufferedKeysState) i2 {
         return self.current.getAxisHorizontal();
     }
-    
+
     /// Returns a signed integer representing the state of the system's
     /// up and down dpad buttons.
     ///
@@ -216,7 +210,7 @@ pub const BufferedKeysState = packed struct(u32) {
     pub inline fn getAxisVertical(self: BufferedKeysState) i2 {
         return self.current.getAxisVertical();
     }
-    
+
     /// Returns a signed integer representing the state of the system's
     /// L (left) and R (right) shoulder buttons.
     ///
@@ -235,7 +229,7 @@ pub const InterruptControl = packed struct(u16) {
         ignore = 0,
         select = 1,
     };
-    
+
     /// Describes the condition upon which an interrupt is triggered.
     pub const Condition = enum(u1) {
         /// Trigger an interrupt when at least one of the selected keys
@@ -273,13 +267,13 @@ pub const InterruptControl = packed struct(u16) {
     /// Determines whether to trigger an interrupt when any of the selected
     /// keys are pressed, or when all of them are pressed.
     condition: Condition = .any,
-    
+
     /// Set the state of a given key to `KeyState.select`.
     pub fn select(self: *volatile InterruptControl, key: Key) void {
         const self_16: u16 = @bitCast(self.*);
         self.* = @bitCast(self_16 | (@as(u16, 1) << @intFromEnum(key)));
     }
-    
+
     /// Set the state of a given key to `KeyState.ignore`.
     pub fn ignore(self: *volatile InterruptControl, key: Key) void {
         const self_16: u16 = @bitCast(self.*);

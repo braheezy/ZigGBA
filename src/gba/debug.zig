@@ -61,7 +61,7 @@ fn stubWrite(_: []const u8) void {}
 /// via ZigGBA's build options.
 /// This may or may not be strictly necessary, depending on the emulator
 /// and the chosen logger.
-pub const init = switch(build_options.default_logger) {
+pub const init = switch (build_options.default_logger) {
     .none => stubInit,
     .agb => agbInit,
     .mgba => stubInit,
@@ -69,7 +69,7 @@ pub const init = switch(build_options.default_logger) {
 
 /// Log a formatted message using the default logger, as configured
 /// via ZigGBA's build options.
-pub const print = switch(build_options.default_logger) {
+pub const print = switch (build_options.default_logger) {
     .none => stubPrint,
     .agb => agbPrint,
     .mgba => mgbaPrintInfo,
@@ -77,7 +77,7 @@ pub const print = switch(build_options.default_logger) {
 
 /// Log a message string using the default logger, as configured
 /// via ZigGBA's build options.
-pub const write = switch(build_options.default_logger) {
+pub const write = switch (build_options.default_logger) {
     .none => stubWrite,
     .agb => agbWrite,
     .mgba => mgbaWriteInfo,

@@ -1,16 +1,16 @@
 const std = @import("std");
 const assert = @import("std").debug.assert;
-const GbaBuild = @import("build.zig").GbaBuild;
+const GbaBuild = @import("../build.zig").GbaBuild;
 const Image = @import("image.zig").Image;
-const RectU16 = @import("../gba/math.zig").RectU16;
-const Vec2U16 = @import("../gba/math.zig").Vec2U16;
+const RectU16 = @import("../src/gba/math.zig").RectU16;
+const Vec2U16 = @import("../src/gba/math.zig").Vec2U16;
 
-pub const CharsetFlags = @import("../gba/text.zig").CharsetFlags;
+pub const CharsetFlags = @import("../src/gba/text.zig").CharsetFlags;
 
 pub const Charset = struct {
     /// Represents an invalid or missing charset.
     pub const none: Charset = .init("", "", .{}, .{});
-    
+
     /// Name of the charset, e.g. `"latin"`.
     name: []const u8,
     /// Name of image containing charset bitmap data.
@@ -19,7 +19,7 @@ pub const Charset = struct {
     grid_size: Vec2U16,
     /// Subrect of the image to take character bitmap data from.
     image_rect: RectU16,
-    
+
     pub fn init(
         name: []const u8,
         image_name: []const u8,
@@ -75,12 +75,12 @@ const Glyph = struct {
             .x_max = image_rect.x,
             .y_min = image_rect.y + image_rect.height,
             .y_max = image_rect.y,
-            .rows = std.ArrayList(u16).init(allocator),
+            .rows = std.ArrayList(u16).empty,
         };
         // Find bounds of image data within the grid cell rect.
-        for(image_rect.y..image_rect.y + image_rect.height) |px_y| {
-            for(image_rect.x..image_rect.x + image_rect.width) |px_x| {
-                if(isImagePixelSet(image, px_x, px_y)) {
+        for (image_rect.y..image_rect.y + image_rect.height) |px_y| {
+            for (image_rect.x..image_rect.x + image_rect.width) |px_x| {
+                if (isImagePixelSet(image, px_x, px_y)) {
                     glyph.x_min = @intCast(@min(glyph.x_min, px_x));
                     glyph.x_max = @intCast(@max(glyph.x_max, px_x + 1));
                     glyph.y_min = @intCast(@min(glyph.y_min, px_y));
@@ -89,7 +89,7 @@ const Glyph = struct {
             }
         }
         // Check for blank image data.
-        if(glyph.x_min >= glyph.x_max or glyph.y_min >= glyph.y_max) {
+        if (glyph.x_min >= glyph.x_max or glyph.y_min >= glyph.y_max) {
             return glyph;
         }
         assert(glyph.x_max >= glyph.x_min);
@@ -99,50 +99,50 @@ const Glyph = struct {
         assert(glyph.y_min >= glyph.image_rect.y);
         assert(glyph.y_min - glyph.image_rect.y <= 12);
         // Build bitmap data.
-        for(glyph.y_min..glyph.y_max) |px_y| {
+        for (glyph.y_min..glyph.y_max) |px_y| {
             var row: u16 = 0;
             var col: u4 = 0;
-            for(glyph.x_min..glyph.x_max) |px_x| {
-                if(isImagePixelSet(image, px_x, px_y)) {
+            for (glyph.x_min..glyph.x_max) |px_x| {
+                if (isImagePixelSet(image, px_x, px_y)) {
                     row |= (@as(u16, 1) << col);
                 }
                 col += 1;
             }
-            try glyph.rows.append(row);
+            try glyph.rows.append(allocator, row);
         }
         // All done!
         return glyph;
     }
-    
+
     pub fn deinit(self: Glyph) void {
         self.rows.deinit();
     }
-        
+
     pub fn isBlank(self: Glyph) bool {
         return self.x_max <= self.x_min or self.y_max <= self.y_min;
     }
-    
+
     /// Write header bytes into a buffer.
-    pub fn encodeHeader(self: Glyph, buffer: *std.ArrayList(u8)) !void {
-        const width: usize = if(self.x_max >= self.x_min) self.x_max - self.x_min else 0;
-        const height: usize = if(self.y_max >= self.y_min) self.y_max - self.y_min else 0;
+    pub fn encodeHeader(self: Glyph, allocator: std.mem.Allocator, buffer: *std.ArrayList(u8)) !void {
+        const width: usize = if (self.x_max >= self.x_min) self.x_max - self.x_min else 0;
+        const height: usize = if (self.y_max >= self.y_min) self.y_max - self.y_min else 0;
         const y_offset = self.y_min - self.image_rect.y;
         assert(width >= 0 and width < 16);
         assert(height >= 0 and height < 16);
         assert(y_offset >= 0 and y_offset < 16);
-        try buffer.append(@intCast((width & 0xF) | ((height & 0xF) << 4)));
-        try buffer.append(@intCast(y_offset & 0xF));
+        try buffer.append(allocator, @intCast((width & 0xF) | ((height & 0xF) << 4)));
+        try buffer.append(allocator, @intCast(y_offset & 0xF));
     }
 
     /// Write bitmap data bytes into a buffer.
-    pub fn encodeRows(self: Glyph, buffer: *std.ArrayList(u8)) !void {
+    pub fn encodeRows(self: Glyph, allocator: std.mem.Allocator, buffer: *std.ArrayList(u8)) !void {
         const wide = (self.x_max - self.x_min) > 8;
-        for(self.rows.items) |row| {
-            if(wide) {
-                try buffer.append(@intCast(row & 0xff));
-                try buffer.append(@intCast((row >> 8) & 0xff));
+        for (self.rows.items) |row| {
+            if (wide) {
+                try buffer.append(allocator, @intCast(row & 0xff));
+                try buffer.append(allocator, @intCast((row >> 8) & 0xff));
             } else {
-                try buffer.append(@intCast(row & 0xff));
+                try buffer.append(allocator, @intCast(row & 0xff));
             }
         }
     }
@@ -155,9 +155,10 @@ pub fn buildFontPath(
     grid_size: Vec2U16,
     image_rect: RectU16,
     allocator: std.mem.Allocator,
+    std_io: std.Io,
 ) ![]u8 {
-    var image = try Image.fromFilePath(allocator, image_path);
-    defer image.deinit();
+    var image = try Image.fromFilePath(allocator, std_io, image_path);
+    defer image.deinit(allocator);
     return buildFont(image, grid_size, image_rect, allocator);
 }
 
@@ -175,12 +176,14 @@ pub fn buildSaveFontPath(
     image_rect: RectU16,
     /// Use this allocator.
     allocator: std.mem.Allocator,
+    std_io: std.Io,
 ) !void {
     const font_data = try buildFontPath(
         image_path,
         grid_size,
         image_rect,
         allocator,
+        std_io,
     );
     defer allocator.free(font_data);
     var file = try std.fs.cwd().createFile(output_path, .{});
@@ -201,11 +204,11 @@ pub fn buildFont(
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     // Read glyphs from the image.
-    var glyphs = std.ArrayList(Glyph).init(arena.allocator());
+    var glyphs = std.ArrayList(Glyph).empty;
     const grid_cols = image_rect.width / grid_size.x;
     const grid_rows = image_rect.height / grid_size.y;
-    for(0..grid_rows) |row| {
-        for(0..grid_cols) |col| {
+    for (0..grid_rows) |row| {
+        for (0..grid_cols) |col| {
             const grid_rect = RectU16{
                 .x = @intCast(image_rect.x + col * grid_size.x),
                 .y = @intCast(image_rect.y + row * grid_size.y),
@@ -213,39 +216,37 @@ pub fn buildFont(
                 .height = grid_size.y,
             };
             const glyph = try Glyph.init(image, grid_rect, arena.allocator());
-            try glyphs.append(glyph);
+            try glyphs.append(arena.allocator(), glyph);
         }
     }
     // Encode glyph data.
-    var headers = std.ArrayList(u8).init(allocator);
-    defer headers.deinit();
-    var bitmaps = std.ArrayList(u8).init(arena.allocator());
+    var headers = std.ArrayList(u8).empty;
+    defer headers.deinit(allocator);
+    var bitmaps = std.ArrayList(u8).empty;
     const headers_len = glyphs.items.len * 4; // 4 bytes per glyph
-    for(glyphs.items) |glyph| {
+    for (glyphs.items) |glyph| {
         var offset: usize = 0;
-        if(!glyph.isBlank()) {
+        if (!glyph.isBlank()) {
             offset = bitmaps.items.len + headers_len;
-            try glyph.encodeRows(&bitmaps);
+            try glyph.encodeRows(allocator, &bitmaps);
         }
-        try glyph.encodeHeader(&headers);
-        try headers.append(@intCast(offset & 0xff));
-        try headers.append(@intCast((offset >> 8) & 0xff));
+        try glyph.encodeHeader(allocator, &headers);
+        try headers.append(allocator, @intCast(offset & 0xff));
+        try headers.append(allocator, @intCast((offset >> 8) & 0xff));
     }
     // All done!
     assert(headers.items.len == headers_len);
-    try headers.appendSlice(bitmaps.items);
-    return headers.toOwnedSlice();
+    try headers.appendSlice(allocator, bitmaps.items);
+    return headers.toOwnedSlice(allocator);
 }
 
 /// Convert font images as a build step.
 pub const BuildFontsStep = struct {
     step: std.Build.Step,
     b: *GbaBuild,
-    
+
     pub fn create(b: *GbaBuild) *BuildFontsStep {
-        const fonts_step = (
-            b.allocator().create(BuildFontsStep) catch @panic("OOM")
-        );
+        const fonts_step = (b.allocator().create(BuildFontsStep) catch @panic("OOM"));
         fonts_step.* = .{
             .b = b,
             .step = std.Build.Step.init(.{
@@ -257,7 +258,7 @@ pub const BuildFontsStep = struct {
         };
         return fonts_step;
     }
-    
+
     fn make(
         step: *std.Build.Step,
         make_options: std.Build.Step.MakeOptions,
@@ -268,7 +269,7 @@ pub const BuildFontsStep = struct {
             charsets.len,
         );
         defer root_node.end();
-        inline for(charsets) |charset| {
+        inline for (charsets) |charset| {
             const charset_node = make_options.progress_node.start(
                 "Building ZigGBA font charset: " ++ charset.name,
                 1,
@@ -285,12 +286,18 @@ pub const BuildFontsStep = struct {
             const output_path_cache = output_path_dep.getPath3(self.b.b, step);
             const output_path_str = try output_path_cache.toString(self.b.allocator());
             defer self.b.allocator().free(output_path_str);
+
+            var threaded: std.Io.Threaded = .init_single_threaded;
+            defer threaded.deinit();
+            const std_io = threaded.io();
+
             try buildSaveFontPath(
                 image_path_str,
                 output_path_str,
                 charset.grid_size,
                 charset.image_rect,
                 self.b.allocator(),
+                std_io,
             );
             root_node.completeOne();
         }

@@ -4,7 +4,7 @@ const ColorRgba32 = @import("color.zig").ColorRgba32;
 const ColorQuantizer = @import("color.zig").ColorQuantizer;
 const ColorQuantizerLinear = @import("color.zig").ColorQuantizerLinear;
 const savePalette = @import("color.zig").savePalette;
-const ColorRgb555 = @import("../gba/color.zig").ColorRgb555;
+const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
 
 /// Result type returned by `colorRgbNearestLinear`.
 const NearestColorResult = struct {
@@ -39,9 +39,9 @@ fn colorRgbNearestLinear(
         find_color,
         colors[start_index],
     );
-    for(start_index + 1..colors.len) |i| {
+    for (start_index + 1..colors.len) |i| {
         const dist = colorRgbDistanceLinear(find_color, colors[i]);
-        if(dist < nearest_dist) {
+        if (dist < nearest_dist) {
             nearest_i = @intCast(i);
             nearest_dist = dist;
         }
@@ -62,19 +62,19 @@ pub const Palettizer = struct {
         /// Y position of the pixel within an image.
         y: u16 = 0,
     };
-    
+
     pub const VTable = struct {
-        get: *const fn(*anyopaque, px: Pixel) u8,
-        getPalette: *const fn(*anyopaque) []const ColorRgba32,
+        get: *const fn (*anyopaque, px: Pixel) u8,
+        getPalette: *const fn (*anyopaque) []const ColorRgba32,
     };
-    
+
     context: *anyopaque,
     vtable: VTable,
-    
+
     pub fn get(self: Palettizer, px: Pixel) u8 {
         return self.vtable.get(self.context, px);
     }
-    
+
     pub fn getPalette(self: Palettizer) []const ColorRgba32 {
         return self.vtable.getPalette(self.context);
     }
@@ -93,11 +93,11 @@ pub const Palettizer = struct {
 /// nearest color that isn't at index 0.
 pub const PalettizerNearest = struct {
     colors: []const ColorRgba32,
-    
+
     pub fn init(colors: []const ColorRgba32) PalettizerNearest {
         return .{ .colors = colors };
     }
-    
+
     pub fn create(
         allocator: std.mem.Allocator,
         colors: []const ColorRgba32,
@@ -106,7 +106,7 @@ pub const PalettizerNearest = struct {
         create_pal.* = .init(colors);
         return create_pal;
     }
-    
+
     pub fn pal(self: *PalettizerNearest) Palettizer {
         return .{
             .context = self,
@@ -116,7 +116,7 @@ pub const PalettizerNearest = struct {
             },
         };
     }
-    
+
     pub fn get(ctx: *anyopaque, px: Palettizer.Pixel) u8 {
         const self: *PalettizerNearest = @ptrCast(@alignCast(ctx));
         if (px.color.a < 0xff) {
@@ -125,7 +125,7 @@ pub const PalettizerNearest = struct {
         }
         return colorRgbNearestLinear(px.color, self.colors, 1).index;
     }
-    
+
     pub fn getPalette(ctx: *anyopaque) []const ColorRgba32 {
         const self: *PalettizerNearest = @ptrCast(@alignCast(ctx));
         return self.colors;
@@ -140,14 +140,14 @@ pub const PalettizerNearest = struct {
 pub const PalettizerNaive = struct {
     colors: []ColorRgba32,
     colors_count: u32 = 1,
-    
+
     /// Initialize using the provided buffer to store discovered colors.
     pub fn initBuffer(colors: []ColorRgba32) PalettizerNaive {
         assert(colors.len <= 256);
         colors[0] = .transparent;
         return .{ .colors = colors };
     }
-    
+
     /// Initialize and allocate a buffer to contain up to `max_colors`
     /// distinct colors.
     pub fn init(
@@ -159,7 +159,7 @@ pub const PalettizerNaive = struct {
         colors[0] = .transparent;
         return .{ .colors = colors };
     }
-    
+
     pub fn create(
         allocator: std.mem.Allocator,
         max_colors: usize,
@@ -168,7 +168,7 @@ pub const PalettizerNaive = struct {
         create_pal.* = try .init(allocator, max_colors);
         return create_pal;
     }
-    
+
     pub fn pal(self: *PalettizerNaive) Palettizer {
         return .{
             .context = self,
@@ -178,14 +178,14 @@ pub const PalettizerNaive = struct {
             },
         };
     }
-    
+
     pub fn get(ctx: *anyopaque, px: Palettizer.Pixel) u8 {
         const self: *PalettizerNaive = @ptrCast(@alignCast(ctx));
         if (px.color.a < 0xff) {
             // Transparent pixels are always palette index 0
             return 0;
         }
-        if(self.colors_count <= 1) {
+        if (self.colors_count <= 1) {
             self.colors[self.colors_count] = px.color;
             defer self.colors_count += 1;
             return @intCast(self.colors_count);
@@ -195,14 +195,14 @@ pub const PalettizerNaive = struct {
             self.colors[0..self.colors_count],
             1,
         );
-        if(nearest.distance == 0 or self.colors_count >= self.colors.len) {
+        if (nearest.distance == 0 or self.colors_count >= self.colors.len) {
             return nearest.index;
         }
         self.colors[self.colors_count] = px.color;
         defer self.colors_count += 1;
         return @intCast(self.colors_count);
     }
-    
+
     pub fn getPalette(ctx: *anyopaque) []const ColorRgba32 {
         const self: *PalettizerNaive = @ptrCast(@alignCast(ctx));
         return self.colors[0..self.colors_count];
@@ -223,20 +223,18 @@ pub const SaveQuantizedPalettizerPaletteStep = struct {
         /// File path to which the palette data should be written.
         output_path: []const u8,
     };
-    
+
     step: std.Build.Step,
     palettizer: Palettizer,
     quantizer: ?ColorQuantizer,
     output_path: []const u8,
-    
+
     pub fn create(b: *std.Build, options: Options) *SaveQuantizedPalettizerPaletteStep {
         const step_name = options.name orelse b.fmt(
             "SaveQuantizedPalettizerPaletteStep {s}",
-            .{ options.output_path },
+            .{options.output_path},
         );
-        const save_step = (
-            b.allocator.create(SaveQuantizedPalettizerPaletteStep) catch @panic("OOM")
-        );
+        const save_step = (b.allocator.create(SaveQuantizedPalettizerPaletteStep) catch @panic("OOM"));
         save_step.* = .{
             .palettizer = options.palettizer,
             .quantizer = options.quantizer,
@@ -250,7 +248,7 @@ pub const SaveQuantizedPalettizerPaletteStep = struct {
         };
         return save_step;
     }
-    
+
     fn make(
         step: *std.Build.Step,
         make_options: std.Build.Step.MakeOptions,
@@ -258,7 +256,7 @@ pub const SaveQuantizedPalettizerPaletteStep = struct {
         const self: *SaveQuantizedPalettizerPaletteStep = @fieldParentPtr("step", step);
         const node_name = step.owner.fmt(
             "Saving palettized palette: {s}",
-            .{ self.output_path },
+            .{self.output_path},
         );
         var node = make_options.progress_node.start(node_name, 1);
         defer node.end();
@@ -269,9 +267,7 @@ pub const SaveQuantizedPalettizerPaletteStep = struct {
         );
         defer step.owner.allocator.free(quantized_colors);
         const default_quantizer = ColorQuantizerLinear.init();
-        const quantizer = (
-            self.quantizer orelse default_quantizer.quantizer()
-        );
+        const quantizer = (self.quantizer orelse default_quantizer.quantizer());
         quantizer.quantizeSlice(palette_colors, quantized_colors, .{});
         try savePalette(quantized_colors, self.output_path);
     }

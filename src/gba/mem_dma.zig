@@ -10,7 +10,7 @@ pub const Dma = extern struct {
         /// Address is fixed.
         fixed = 2,
         /// Increment the destination during the transfer, and reset it so
-        /// that repeat DMA will always start at the same destination. 
+        /// that repeat DMA will always start at the same destination.
         reload = 3,
     };
 
@@ -55,14 +55,14 @@ pub const Dma = extern struct {
         /// Source pointer adjustment.
         source: SourceAdjustment = .increment,
         /// Repeats the copy at each VBlank or HBlank if the DMA timing has
-        /// been set to those modes. 
+        /// been set to those modes.
         /// Must be false if gamepak_drq is used (DMA3 only).
         dma_repeat: bool = false,
         /// Whether to copy by 32-bit word or 16-bit half-word.
         size: Size = .bits_16,
         /// DMA3 only.
         gamepak_drq: bool = false,
-        /// Timing mode. Specifies when the transfer should start. 
+        /// Timing mode. Specifies when the transfer should start.
         timing: Timing = .immediate,
         /// Interrupt request. If set, then an interrupt will be raised
         /// upon finishing the transfer.

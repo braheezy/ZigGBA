@@ -22,13 +22,13 @@ pub const UnCompHeader = packed struct(u32) {
         /// `diff8bitUnFilterVRAM`, or `diff16bitUnFilter`.
         diff = 8,
     };
-    
+
     /// The `diff8bitUnFilterWRAM` and `diff8bitUnFilterVRAM` functions
     /// expect this `size` value.
     pub const size_diff_bits_8: u4 = 1;
     /// The `diff16bitUnFilter` function expects this `size` value.
     pub const size_diff_bits_16: u4 = 2;
-    
+
     /// Data size.
     /// Acceptable values vary depending on `type`.
     ///
@@ -52,7 +52,7 @@ pub const BitUnPackOptions = extern struct {
         bits_4 = 4,
         bits_8 = 8,
     };
-    
+
     /// Width in bits of values to be written to the destination.
     pub const DestinationWidth = enum(u8) {
         bits_1 = 0,
@@ -62,7 +62,7 @@ pub const BitUnPackOptions = extern struct {
         bits_16 = 16,
         bits_32 = 32,
     };
-    
+
     /// Length of source data, in bytes.
     src_len: u16,
     /// Width of values to read from source data, in bits.
@@ -84,14 +84,12 @@ pub fn bitUnPack(
     destination: *align(4) const anyopaque,
     options: *const BitUnPackOptions,
 ) void {
-    asm volatile (
-        "swi 0x10"
+    asm volatile ("swi 0x10"
         :
         : [source] "{r0}" (source),
           [destination] "{r1}" (destination),
           [options] "{r2}" (options),
-        : "r0", "r1", "r2", "r3", "cc", "memory"
-    );
+        : .{ .r0 = true, .r1 = true, .r2 = true, .r3 = true, .memory = true });
 }
 
 /// Common helper for implementing UnComp BIOS calls.
@@ -100,13 +98,11 @@ inline fn unComp(
     source: [*]const volatile anyopaque,
     destination: [*]volatile anyopaque,
 ) void {
-    asm volatile (
-        assembly
+    asm volatile (assembly
         :
         : [source] "{r0}" (source),
           [destination] "{r1}" (destination),
-        : "r0", "r1", "r3", "cc", "memory"
-    );
+        : .{ .r0 = true, .r1 = true, .r3 = true, .memory = true });
 }
 
 /// Inflate LZ77 compressed data.

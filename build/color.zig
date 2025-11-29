@@ -1,4 +1,4 @@
-pub const ColorRgb555 = @import("../gba/color.zig").ColorRgb555;
+pub const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
 
 pub const savePalette = @import("color_palette.zig").savePalette;
 pub const SavePaletteStep = @import("color_palette.zig").SavePaletteStep;
@@ -26,7 +26,7 @@ pub const ColorRgba32 = packed struct(u32) {
     pub const magenta: ColorRgba32 = .fromIntRgb(0xff00ff);
     pub const orange: ColorRgba32 = .fromIntRgb(0xff8000);
     pub const aqua: ColorRgba32 = .fromIntRgb(0x0080ff);
-    
+
     /// Intensity in red color channel.
     r: u8,
     /// Intensity in green color channel.
@@ -35,23 +35,23 @@ pub const ColorRgba32 = packed struct(u32) {
     b: u8,
     /// Alpha level. Determines opacity.
     a: u8,
-    
+
     pub fn rgb(r: u8, g: u8, b: u8) ColorRgba32 {
         return .{ .r = r, .g = g, .b = b, .a = 0xff };
     }
-    
+
     pub fn rgba(r: u8, g: u8, b: u8, a: u8) ColorRgba32 {
         return .{ .r = r, .g = g, .b = b, .a = a };
     }
-    
+
     pub fn fromIntensity(i: u8) ColorRgba32 {
         return .{ .r = i, .g = i, .b = i, .a = 0xff };
     }
-    
+
     pub fn fromIntensityAlpha(i: u8, a: u8) ColorRgba32 {
         return .{ .r = i, .g = i, .b = i, .a = a };
     }
-    
+
     pub fn fromIntRgb(int_rgb: u32) ColorRgba32 {
         return .rgb(
             @intCast((int_rgb >> 16) & 0xff),
@@ -59,7 +59,7 @@ pub const ColorRgba32 = packed struct(u32) {
             @intCast(int_rgb & 0xff),
         );
     }
-    
+
     pub fn fromIntArgb(int_argb: u32) ColorRgba32 {
         return .rgba(
             @intCast((int_argb >> 16) & 0xff),
@@ -68,28 +68,26 @@ pub const ColorRgba32 = packed struct(u32) {
             @intCast((int_argb >> 24) & 0xff),
         );
     }
-    
+
     pub fn toIntArgb(self: ColorRgba32) u32 {
-        return (
-            (@as(u32, self.a) << 24) |
+        return ((@as(u32, self.a) << 24) |
             (@as(u32, self.r) << 16) |
             (@as(u32, self.g) << 8) |
-            self.b
-        );
+            self.b);
     }
-    
+
     pub fn withRed(self: ColorRgba32, r: u8) ColorRgba32 {
         return .{ .r = r, .g = self.g, .b = self.b, .a = self.a };
     }
-    
+
     pub fn withGreen(self: ColorRgba32, g: u8) ColorRgba32 {
         return .{ .r = self.r, .g = g, .b = self.b, .a = self.a };
     }
-    
+
     pub fn withBlue(self: ColorRgba32, b: u8) ColorRgba32 {
         return .{ .r = self.r, .g = self.g, .b = b, .a = self.a };
     }
-    
+
     pub fn withAlpha(self: ColorRgba32, a: u8) ColorRgba32 {
         return .{ .r = self.r, .g = self.g, .b = self.b, .a = a };
     }

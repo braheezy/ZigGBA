@@ -13,7 +13,7 @@ pub const objects: *align(8) volatile [128]Object = @ptrCast(gba.mem.oam);
 /// Otherwise, all 128 objects in OAM are initialized as visible 8x8 objects
 /// in the top-left corner using tile index 0.
 pub fn hideAllObjects() void {
-    for(objects) |*obj| {
+    for (objects) |*obj| {
         obj.mode = .hidden;
     }
 }
@@ -64,7 +64,7 @@ pub const Object = packed struct(u48) {
         /// to be using `Mode.affine_double` instead of `Mode.affine`.
         affine_double = 3,
     };
-    
+
     /// Enumeration of supported special graphics effect options for
     /// objects/sprites.
     pub const Effect = enum(u2) {
@@ -79,7 +79,7 @@ pub const Object = packed struct(u48) {
         /// See `gba.display.window`.
         window,
     };
-    
+
     /// Enumeration of possible values for the `shape` attribute.
     /// Determines width and height in combination with `shape_size`.
     pub const Shape = enum(u2) {
@@ -90,7 +90,7 @@ pub const Object = packed struct(u48) {
         /// Corresponding sizes are 8x16, 8x32, 16x32, and 32x64.
         tall = 2,
     };
-    
+
     /// Enumeration of possible values for the `shape_size` attribute.
     /// Determines width and height in combination with `shape`.
     pub const ShapeSize = enum(u2) {
@@ -142,10 +142,10 @@ pub const Object = packed struct(u48) {
         pub const size_16x32: Size = .init(.tall, .size_16);
         /// Represents an object size of 32x64 pixels (4x8 tiles).
         pub const size_32x64: Size = .init(.tall, .size_64);
-        
+
         shape: Shape = .square,
         shape_size: ShapeSize = .size_2,
-        
+
         pub fn init(shape: Shape, shape_size: ShapeSize) Size {
             return .{ .shape = shape, .shape_size = shape_size };
         }
@@ -161,24 +161,24 @@ pub const Object = packed struct(u48) {
             /// Flip the sprite vertically, when set.
             y: bool = false,
         };
-        
+
         /// Sprite flipping flags. Applies to normal (not affine) objects.
         flip: Flip,
         /// Index of an affine transformation matrix in OAM.
         /// Applies to affine objects.
         /// See `setObjectTransform`.
         affine_index: u5,
-        
+
         /// Initialize horizontal and vertical flip.
         pub fn initFlip(x: bool, y: bool) Transform {
             return .{ .flip = .{ .x = x, .y = y } };
         }
-        
+
         /// Initialize horizontal and vertical flip with a vector.
         pub fn initFlipVec(vec: gba.math.Vec2B) Transform {
             return .initFlip(vec.x, vec.y);
         }
-        
+
         /// Initialize with an affine matrix index.
         pub fn initAffine(affine_index: u5) Transform {
             return .{ .affine_index = affine_index };
@@ -250,7 +250,7 @@ pub const Object = packed struct(u48) {
     /// 16-color sprite palette bank should be used.
     /// Otherwise, for 8-bit color, this value is ignored.
     palette: u4 = 0,
-    
+
     /// Options accepted by `init`.
     /// These options relate to initializing an object with `Mode.normal`.
     pub const InitOptions = struct {
@@ -278,7 +278,7 @@ pub const Object = packed struct(u48) {
         /// Palette bank index for 4bpp objects.
         palette: u4 = 0,
     };
-    
+
     /// Options accepted by `initAffine`.
     /// These options relate to initializing an object with `Mode.affine`
     /// or `Mode.affine_double`.
@@ -310,7 +310,7 @@ pub const Object = packed struct(u48) {
         /// Palette bank index for 4bpp objects.
         palette: u4 = 0,
     };
-    
+
     /// Helper to initialize a normal object.
     pub fn init(options: InitOptions) Object {
         return .{
@@ -328,12 +328,12 @@ pub const Object = packed struct(u48) {
             .palette = options.palette,
         };
     }
-    
+
     /// Helper to initialize an affine object.
     pub fn initAffine(options: InitAffineOptions) Object {
         return .{
             .y = options.y,
-            .mode = if(options.double) Mode.affine_double else Mode.affine,
+            .mode = if (options.double) Mode.affine_double else Mode.affine,
             .effect = options.effect,
             .mosaic = options.mosaic,
             .bpp = options.bpp,
@@ -363,7 +363,7 @@ pub const Object = packed struct(u48) {
 
     /// Assign the X and Y position of the object using a vector.
     pub inline fn setPositionVec(self: *Object, vec: anytype) void {
-        if(comptime(!@hasField(vec, "x") or !@hasField(vec, "y"))) {
+        if (comptime (!@hasField(vec, "x") or !@hasField(vec, "y"))) {
             @compileError("Position value is not a valid vector type.");
         }
         self.x = @intCast(vec.x);

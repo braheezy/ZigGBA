@@ -96,9 +96,7 @@ pub const screen_width = 240;
 pub const screen_height = 160;
 
 /// Size of GBA video output in pixels, represented as a vector.
-pub const screen_size: gba.math.Vec2U8 = (
-    .init(screen_width, screen_height)
-);
+pub const screen_size: gba.math.Vec2U8 = (.init(screen_width, screen_height));
 
 /// Width of GBA video output, in 8x8 pixel tiles.
 pub const screen_width_tiles = 30;
@@ -107,9 +105,7 @@ pub const screen_width_tiles = 30;
 pub const screen_height_tiles = 20;
 
 /// Size of GBA video output in tiles, represented as a vector.
-pub const screen_size_tiles: gba.math.Vec2U8 = (
-    .init(screen_width_tiles, screen_height_tiles)
-);
+pub const screen_size_tiles: gba.math.Vec2U8 = (.init(screen_width_tiles, screen_height_tiles));
 
 /// Represents the structure of the display status register REG_DISPSTAT.
 pub const Status = packed struct(u16) {
@@ -160,8 +156,8 @@ pub const vcount: *align(2) const volatile u8 = @ptrCast(gba.mem.io.reg_vcount);
 /// You probably want to enable interrupts and use
 /// `gba.bios.vblankIntrWait` instead of this.
 pub fn naiveVSync() void {
-    while(vcount.* >= 160) {} // wait for VDraw
-    while(vcount.* < 160) {} // wait for VBlank
+    while (vcount.* >= 160) {} // wait for VDraw
+    while (vcount.* < 160) {} // wait for VBlank
 }
 
 /// Describes a mosaic effect.

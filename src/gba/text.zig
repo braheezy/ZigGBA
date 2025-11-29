@@ -35,11 +35,11 @@ pub const CodePointIterator = @import("text_unicode.zig").CodePointIterator;
 /// Provides a common interface for laying out text.
 pub const TextLayout = struct {
     // TODO: Support combining characters (e.g. 0x0300-0x036f)
-    
+
     pub const default_space_width = 3;
     pub const full_height = 12;
     pub const full_width = 10;
-    
+
     pub const Wrap = enum(u2) {
         /// No automatic text wrapping.
         none,
@@ -51,13 +51,13 @@ pub const TextLayout = struct {
         // This could be reasonably implemented via a lookahead of ~8 chars
         // when nearing the line length limit to find the best place to wrap.
     };
-    
+
     pub const Glyph = struct {
         /// Represents end of text.
         pub const eof: Glyph = .{ .point = -1 };
         /// Unknown or unprintable code point.
         pub const unprintable: Glyph = .{ .point = 0 };
-        
+
         point: i32,
         data: ?[*]const u8 = null,
         data_is_wide: bool = false,
@@ -68,28 +68,27 @@ pub const TextLayout = struct {
         size_y: u4 = 0,
         truncated_x: bool = false,
         truncated_y: bool = false,
-        
+
         pub fn getDataRow(self: Glyph, row_i: u4) u16 {
             assert(self.data != null);
             const data = self.data orelse unreachable;
-            if(!self.data_is_wide) {
+            if (!self.data_is_wide) {
                 return data[row_i];
-            }
-            else {
+            } else {
                 const row_i_2 = @as(u16, row_i) << 1;
                 return data[row_i_2] | (@as(u16, data[row_i_2 + 1]) << 8);
             }
         }
-        
+
         pub fn isEof(self: Glyph) bool {
             return self.point < 0;
         }
-        
+
         pub fn isUnprintable(self: Glyph) bool {
             return self.data == null;
         }
     };
-    
+
     /// Options accepted by `init`, describing how glyphs should be laid out.
     pub const Options = struct {
         /// Start drawing text at this X position.
@@ -121,21 +120,15 @@ pub const TextLayout = struct {
         pad_character_width: u8 = 0,
         /// Text wrapping behavior.
         wrap: Wrap = .none,
-        
+
         pub fn clampMaxSize(self: Options, max_x: u32, max_y: u32) Options {
             var options: Options = self;
-            options.max_width = (
-                if(max_x > self.x) @min(options.max_width, max_x - self.x)
-                else 0
-            );
-            options.max_height = (
-                if(max_y > self.y) @min(options.max_height, max_y - self.y)
-                else 0
-            );
+            options.max_width = (if (max_x > self.x) @min(options.max_width, max_x - self.x) else 0);
+            options.max_height = (if (max_y > self.y) @min(options.max_height, max_y - self.y) else 0);
             return options;
         }
     };
-    
+
     points: CodePointIterator,
     max_x: u32,
     max_y: u32,
@@ -151,7 +144,7 @@ pub const TextLayout = struct {
     bounds_min_y: u32,
     bounds_max_x: u32,
     bounds_max_y: u32,
-    
+
     pub fn init(text: []const u8, options: Options) TextLayout {
         const y = options.y + options.line_height - full_height;
         return .{
@@ -172,7 +165,7 @@ pub const TextLayout = struct {
             .bounds_max_y = y,
         };
     }
-    
+
     pub fn getBoundsRect(self: TextLayout) gba.math.RectU32 {
         return .initBounds(
             self.bounds_min_x,
@@ -181,28 +174,28 @@ pub const TextLayout = struct {
             self.bounds_max_y,
         );
     }
-    
+
     pub fn getBoundsOffset(self: TextLayout) gba.math.Vec2U32 {
         return .init(
             self.bounds_min_x - self.x_initial,
             self.bounds_min_y - self.y_initial,
         );
     }
-    
+
     fn startNextLine(self: *TextLayout) void {
         self.x = self.x_initial;
         self.y += self.line_height;
     }
-    
+
     pub fn next(self: *TextLayout) Glyph {
-        if(self.y >= self.max_y) {
+        if (self.y >= self.max_y) {
             return .eof;
         }
         const point = self.points.next();
-        if(point < 0) {
+        if (point < 0) {
             return .eof;
         }
-        switch(point) {
+        switch (point) {
             ' ', 0xa0 => { // space and non-breaking space (nbsp)
                 self.x += self.space_width;
             },
@@ -223,14 +216,14 @@ pub const TextLayout = struct {
                 self.x += full_height;
             },
             0x2004 => { // three-per-em space
-                const full_height_div3 = comptime(full_height / 3);
+                const full_height_div3 = comptime (full_height / 3);
                 self.x += full_height_div3;
             },
             0x2005 => { // four-per-em space
                 self.x += full_height >> 2;
             },
             0x2006 => { // six-per-em space
-                const full_height_div6 = comptime(full_height / 6);
+                const full_height_div6 = comptime (full_height / 6);
                 self.x += full_height_div6;
             },
             0x2007 => { // figure space
@@ -249,24 +242,20 @@ pub const TextLayout = struct {
                 self.x += full_width;
             },
             else => {
-                for(enabled_charsets) |charset| {
-                    if(charset.containsCodePoint(point)) {
+                for (enabled_charsets) |charset| {
+                    if (charset.containsCodePoint(point)) {
                         var glyph = self.layoutGlyph(charset, point);
-                        if(self.wrap != .none and (
-                            glyph.x > self.x_initial and glyph.truncated_x
-                        )) {
+                        if (self.wrap != .none and (glyph.x > self.x_initial and glyph.truncated_x)) {
                             self.startNextLine();
                             glyph = self.layoutGlyph(charset, point);
                         }
                         self.x = glyph.next_x;
-                        if(
-                            (self.bounds_max_x == self.bounds_min_x) and
-                            (self.bounds_max_y == self.bounds_min_y)
-                        ) {
+                        if ((self.bounds_max_x == self.bounds_min_x) and
+                            (self.bounds_max_y == self.bounds_min_y))
+                        {
                             self.bounds_min_x = glyph.x;
                             self.bounds_min_y = glyph.y;
-                        }
-                        else {
+                        } else {
                             self.bounds_min_x = @min(
                                 self.bounds_min_x,
                                 glyph.x,
@@ -287,17 +276,17 @@ pub const TextLayout = struct {
                         return glyph;
                     }
                 }
-            }
+            },
         }
         return .unprintable;
     }
-    
+
     /// Process all glyphs.
     /// This might be useful to compute the bounds of some text.
     pub fn exhaust(self: *TextLayout) void {
-        while(!self.next().isEof()) {}
+        while (!self.next().isEof()) {}
     }
-    
+
     /// Helper called by `TextLayout.next` for a matching charset.
     fn layoutGlyph(
         self: TextLayout,
@@ -307,24 +296,21 @@ pub const TextLayout = struct {
         assert(point >= 0);
         assert(charset.hasData());
         const glyph_align = getCodePointAlignment(point);
-        const header = charset.getHeader(
-            @as(u16, @intCast(point)) - charset.code_point_min
-        );
+        const header = charset.getHeader(@as(u16, @intCast(point)) - charset.code_point_min);
         var next_x = self.x;
         var x = self.x;
         const y = self.y;
         const size_x = @max(header.size_x, self.pad_character_width);
-        if(size_x >= full_width) {
+        if (size_x >= full_width) {
             next_x += size_x + 1;
-            if(self.pad_character_width > header.size_x) {
+            if (self.pad_character_width > header.size_x) {
                 x += (self.pad_character_width - header.size_x) >> 1;
             }
-        }
-        else {
-            switch(glyph_align) {
+        } else {
+            switch (glyph_align) {
                 .normal => {
                     next_x += size_x + 1;
-                    if(self.pad_character_width > header.size_x) {
+                    if (self.pad_character_width > header.size_x) {
                         x += (self.pad_character_width - header.size_x) >> 1;
                     }
                 },
@@ -351,14 +337,8 @@ pub const TextLayout = struct {
             .x = x,
             .y = y + header.offset_y,
             .next_x = next_x,
-            .size_x = (
-                if(truncated_x) @intCast(self.max_x - header.size_x)
-                else header.size_x
-            ),
-            .size_y = (
-                if(truncated_y) @intCast(self.max_y - header.size_y)
-                else header.size_y
-            ),
+            .size_x = (if (truncated_x) @intCast(self.max_x - header.size_x) else header.size_x),
+            .size_y = (if (truncated_y) @intCast(self.max_y - header.size_y) else header.size_y),
             .truncated_x = truncated_x,
             .truncated_y = truncated_y,
         };
@@ -369,12 +349,12 @@ pub fn TextStyleOptions(comptime PixelT: type) type {
     // TODO: Outline, drop shadow, and potentially other effects
     return struct {
         const Self = @This();
-        
+
         /// Data to write to the surface for each pixel of the displayed text.
         /// Typically either a palette color or `gba.ColorRgb555`, depending
         /// on the type of surface being drawn to.
         pixel: PixelT,
-        
+
         /// Initialize with a foreground pixel/color and no other style effects.
         pub fn init(pixel: PixelT) Self {
             return .{ .pixel = pixel };
@@ -396,22 +376,21 @@ pub fn drawTextLayout(
     layout: *TextLayout,
 ) void {
     @setRuntimeSafety(false);
-    while(true) {
+    while (true) {
         const glyph = layout.next();
-        if(glyph.isEof()) {
+        if (glyph.isEof()) {
             return;
-        }
-        else if(glyph.isUnprintable()) {
+        } else if (glyph.isUnprintable()) {
             continue;
         }
         // TODO: It's probably possible to significantly optimize this
         // loop for VRAM by writing 16 bits of pixels at once whenever possible
-        for(0..glyph.size_y) |row_i| {
+        for (0..glyph.size_y) |row_i| {
             var row = glyph.getDataRow(@truncate(row_i));
-            for(0..glyph.size_x) |col_i| {
+            for (0..glyph.size_x) |col_i| {
                 const pixel = row & 1;
                 row >>= 1;
-                if(pixel != 0) {
+                if (pixel != 0) {
                     const px_x = glyph.x + col_i;
                     const px_y = glyph.y + row_i;
                     surface.setPixel(

@@ -24,7 +24,7 @@ pub const Charset = struct {
         /// Offset of character bitmap within the binary charset data.
         data_offset: u16 = 0,
     };
-    
+
     /// Represents an empty or missing charset.
     /// The `hasData` method returns false for this charset instance.
     pub const none: Charset = .{
@@ -33,7 +33,7 @@ pub const Charset = struct {
         .code_point_min = 0,
         .code_point_max = 0,
     };
-    
+
     /// Records whether support for this charset has been enabled in
     /// build options.
     enabled: bool,
@@ -46,7 +46,7 @@ pub const Charset = struct {
     /// Inclusive high bound of Unicode code point range represented by
     /// this charset.
     code_point_max: u16,
-    
+
     /// Options accepted by `init`.
     pub const InitOptions = struct {
         /// Inclusive low bound of Unicode code point range.
@@ -54,7 +54,7 @@ pub const Charset = struct {
         /// Inclusive high bound of Unicode code point range.
         code_point_max: u16,
     };
-    
+
     pub fn init(
         comptime name: []const u8,
         code_point_min: u16,
@@ -62,10 +62,9 @@ pub const Charset = struct {
     ) Charset {
         const enabled: bool = @field(build_options.text_charsets, name);
         const data align(2) = blk: {
-            if(enabled) {
+            if (enabled) {
                 break :blk @embedFile("ziggba_font_" ++ name ++ ".bin").*;
-            }
-            else {
+            } else {
                 break :blk charset_data_empty;
             }
         };
@@ -76,7 +75,7 @@ pub const Charset = struct {
             .data = &data,
         };
     }
-    
+
     /// Get a `CharHeader` representing metadata for this charset.
     pub inline fn getHeader(
         self: Charset,
@@ -85,13 +84,13 @@ pub const Charset = struct {
         const header_data: [*]align(2) const CharHeader = @ptrCast(self.data);
         return &header_data[index];
     }
-    
+
     /// Check whether the charset contains glyph image data for a given
     /// Unicode code point.
     pub fn containsCodePoint(self: Charset, point: i32) bool {
         return point >= self.code_point_min and point <= self.code_point_max;
     }
-    
+
     /// Returns true when the charset contains any glyph image data.
     pub fn hasData(self: Charset) bool {
         return self.data.len > 0;
@@ -131,12 +130,12 @@ pub const CharsetFlags = struct {
     /// All flags set.
     pub const all: CharsetFlags = blk: {
         var flags: CharsetFlags = .{};
-        for(@typeInfo(CharsetFlags).@"struct".fields) |field| {
+        for (@typeInfo(CharsetFlags).@"struct".fields) |field| {
             @field(flags, field.name) = true;
         }
         break :blk flags;
     };
-    
+
     /// Unicode Latin block.
     /// Contains code points 0x20 through 0x7f.
     latin: bool = false,
@@ -165,7 +164,7 @@ pub const CharsetFlags = struct {
 
 const num_enabled_charsets: u8 = blk: {
     var count: u8 = 0;
-    for(all_charsets) |charset| {
+    for (all_charsets) |charset| {
         count += @intFromBool(charset.hasData());
     }
     break :blk count;
@@ -176,8 +175,8 @@ const num_enabled_charsets: u8 = blk: {
 pub const enabled_charsets = blk: {
     var array: [num_enabled_charsets]Charset = @splat(.none);
     var array_index: u8 = 0;
-    for(all_charsets) |charset| {
-        if(charset.hasData()) {
+    for (all_charsets) |charset| {
+        if (charset.hasData()) {
             array[array_index] = charset;
             array_index += 1;
         }

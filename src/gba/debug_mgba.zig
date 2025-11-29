@@ -33,18 +33,23 @@ pub const reg_mgba_log_enable: *volatile u16 = @ptrFromInt(0x4fff780);
 const MgbaLogStream = struct {
     log_level: MgbaLogLevel,
     buffer_pos: usize,
+    io_writer: std.Io.Writer,
 
     pub fn init(log_level: MgbaLogLevel) MgbaLogStream {
         return .{
             .log_level = log_level,
             .buffer_pos = 0,
+            .io_writer = .{
+                .vtable = &vtable,
+                .buffer = &.{}, // Unbuffered writer
+            },
         };
     }
-    
+
     pub fn write(self: *MgbaLogStream, bytes: []const u8) usize {
         var bytes_i: usize = 0;
-        while(bytes_i < bytes.len) {
-            if(self.buffer_pos >= reg_mgba_log_str_size) {
+        while (bytes_i < bytes.len) {
+            if (self.buffer_pos >= reg_mgba_log_str_size) {
                 reg_mgba_log_level.* = @intFromEnum(self.log_level);
                 self.buffer_pos = 0;
             }
@@ -62,26 +67,46 @@ const MgbaLogStream = struct {
         }
         return bytes_i;
     }
-    
-    /// Wraps `write` with an interface compatible with `std.io.Writer`.
-    pub fn writerWrite(self: *MgbaLogStream, bytes: []const u8) !usize {
-        return self.write(bytes);
+
+    fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+        const self: *MgbaLogStream = @fieldParentPtr("io_writer", w);
+        var total: usize = 0;
+
+        // Write each buffer in the data array
+        for (data) |buf| {
+            total += self.write(buf);
+        }
+
+        // Handle splatting (repeating the last buffer)
+        if (splat > 0 and data.len > 0) {
+            const pattern = data[data.len - 1];
+            var i: usize = 0;
+            while (i < splat) : (i += 1) {
+                total += self.write(pattern);
+            }
+        }
+
+        return total;
     }
-    
+
     pub fn flush(self: *MgbaLogStream) void {
-        if(self.buffer_pos != 0) {
+        if (self.buffer_pos != 0) {
             reg_mgba_log_level.* = @intFromEnum(self.log_level);
         }
     }
 
-    pub fn outStream(
-        self: *MgbaLogStream,
-    ) std.io.Writer(
-        *MgbaLogStream,
-        error{BufferTooSmall},
-        MgbaLogStream.writerWrite,
-    ) {
-        return .{ .context = self };
+    fn writerFlush(w: *std.Io.Writer) std.Io.Writer.Error!void {
+        const self: *MgbaLogStream = @fieldParentPtr("io_writer", w);
+        self.flush();
+    }
+
+    const vtable: std.Io.Writer.VTable = .{
+        .drain = drain,
+        .flush = writerFlush,
+    };
+
+    pub fn writer(self: *MgbaLogStream) *std.Io.Writer {
+        return &self.io_writer;
     }
 };
 
@@ -94,7 +119,7 @@ pub fn mgbaPrint(
     var stream = MgbaLogStream.init(level);
     defer stream.flush();
     reg_mgba_log_enable.* = reg_mgba_log_enabled;
-    try std.fmt.format(stream.outStream(), formatString, args);
+    try stream.writer().print(formatString, args);
 }
 
 /// Print a message with a given log level.

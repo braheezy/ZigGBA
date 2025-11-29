@@ -19,14 +19,14 @@ pub const Blend = extern struct {
             /// Blend A with black.
             black,
         };
-        
+
         /// Has a flag for each blend layer.
         pub const LayerFlags = packed struct(u6) {
             /// All flags set.
             pub const all: LayerFlags = @bitCast(0x3f);
             /// No flags set.
             pub const none: LayerFlags = .{};
-            
+
             /// Background 0 layer.
             bg0: bool = false,
             /// Background 1 layer.
@@ -41,7 +41,7 @@ pub const Blend = extern struct {
             /// The backdrop is a solid-color layer filled with palette color 0.
             backdrop: bool = false,
         };
-        
+
         /// Select background 0 layer for blend A.
         a_bg0: bool = false,
         /// Select background 1 layer for blend A.
@@ -72,37 +72,31 @@ pub const Blend = extern struct {
         b_backdrop: bool = false,
         /// Unused bits.
         _: u2 = 0,
-        
+
         pub fn init(mode: Mode, a: LayerFlags, b: LayerFlags) Control {
-            return @bitCast(
-                @as(u16, @bitCast(a)) |
+            return @bitCast(@as(u16, @bitCast(a)) |
                 (@as(u16, @bitCast(mode)) << 6) |
-                (@as(u16, @bitCast(b)) << 8)
-            );
+                (@as(u16, @bitCast(b)) << 8));
         }
-        
+
         /// Initialize a `Control` value for use with `Mode.alpha`.
         pub fn initAlpha(a: LayerFlags, b: LayerFlags) Control {
             return .init(.alpha, a, b);
         }
-        
+
         /// Initialize a `Control` value for use with `Mode.white`.
         pub fn initWhite(a: LayerFlags) Control {
-            return @bitCast(
-                @as(u16, @bitCast(a)) |
-                (@as(u16, @bitCast(Mode.white)) << 6)
-            );
+            return @bitCast(@as(u16, @bitCast(a)) |
+                (@as(u16, @bitCast(Mode.white)) << 6));
         }
-        
+
         /// Initialize a `Control` value for use with `Mode.black`.
         pub fn initBlack(a: LayerFlags) Control {
-            return @bitCast(
-                @as(u16, @bitCast(a)) |
-                (@as(u16, @bitCast(Mode.black)) << 6)
-            );
+            return @bitCast(@as(u16, @bitCast(a)) |
+                (@as(u16, @bitCast(Mode.black)) << 6));
         }
     };
-    
+
     /// Represents the contents of REG_BLDALPHA.
     pub const Alpha = packed struct(u16) {
         /// Blend weight for blend A. Clamped to a maximum value of 16.
@@ -114,30 +108,30 @@ pub const Blend = extern struct {
         b: u5,
         /// Unused bits.
         _1: u3,
-        
+
         pub fn init(a: u5, b: u5) Alpha {
             return .{ .a = a, .b = b };
         }
     };
-    
+
     /// Represents the contents of REG_BLDY.
     /// Note that Tonc documents REG_BLDY as a 16-bit register whereas GBATEK
     /// documents it as a 32-bit register with 16 additional unused bits.
     pub const Luma = packed struct(u16) {
         pub const zero = Luma.init(0);
-        
+
         /// Blend weight for white or black. Clamped to a maximum of 16.
         /// Used as a ratio with `Alpha.a` when `Control.mode` is
         /// `Mode.white` or `Mode.black`.
         y: u5 = 0,
         /// Unused bits.
         _: u11 = 0,
-        
+
         pub fn init(y: u5) Luma {
             return .{ .y = y };
         }
     };
-    
+
     /// Controls blend mode as well as which layers are involved in blending.
     /// Corresponds to REG_BLDCNT.
     ctrl: Control,
@@ -148,11 +142,11 @@ pub const Blend = extern struct {
     /// Contains a blending weight value for blending A with white or black.
     /// Corresponds to REG_BLDY, which is write-only.
     luma: Luma,
-    
+
     pub fn init(ctrl: Control, alpha: Alpha, luma: Luma) Blend {
         return .{ .ctrl = ctrl, .alpha = alpha, .luma = luma };
     }
-    
+
     /// Initialize with `Mode.alpha`.
     pub fn initAlpha(
         a_weight: u5,
@@ -166,7 +160,7 @@ pub const Blend = extern struct {
             .luma = .zero,
         };
     }
-    
+
     /// Initialize with `Mode.white`.
     pub fn initWhite(
         a_weight: u5,
@@ -179,7 +173,7 @@ pub const Blend = extern struct {
             .luma = .init(y_weight),
         };
     }
-    
+
     /// Initialize with `Mode.black`.
     pub fn initBlack(
         a_weight: u5,

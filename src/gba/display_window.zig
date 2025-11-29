@@ -10,13 +10,13 @@ pub const Window = extern struct {
         right: u8 = 0,
         left: u8 = 0,
     };
-    
+
     /// Represents the structure of REG_WIN0V and REG_WIN1V.
     pub const BoundsVertical = packed struct(u16) {
         bottom: u8 = 0,
         top: u8 = 0,
     };
-    
+
     /// Contains flags determining how layers are affected by a given
     /// window region.
     /// See `Inner.win0`, `Inner.win1`, `Other.outer`, and `Other.obj`.
@@ -25,7 +25,7 @@ pub const Window = extern struct {
         pub const all: Layers = @bitCast(0x3f);
         /// No flags set.
         pub const none: Layers = .{};
-        
+
         /// Indicates whether a given window region should affect background 0.
         bg0: bool = false,
         /// Indicates whether a given window region should affect background 1.
@@ -42,7 +42,7 @@ pub const Window = extern struct {
         /// Padding bits.
         _: u2 = 0,
     };
-    
+
     /// Determines the rectangular bounds of windows 0 and 1.
     /// Corresponds to REG_WIN0H and REG_WIN1H.
     /// Note that REG_WIN0H and REG_WIN1H are write-only.

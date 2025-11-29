@@ -5,19 +5,15 @@ const gba = @import("gba.zig");
 /// Returns either a `Vec2I`, `Vec2U`, or `Vec2FixedI` type depending
 /// on the given vector component type.
 pub fn Vec2(comptime T: type) type {
-    if(comptime(T == bool)) {
+    if (comptime (T == bool)) {
         return Vec2B(T);
-    }
-    else if(comptime(gba.math.isSignedFixedPointType(T))) {
+    } else if (comptime (gba.math.isSignedFixedPointType(T))) {
         return Vec2I(T);
-    }
-    else if(comptime(gba.math.isSignedIntPrimitiveType(T))) {
+    } else if (comptime (gba.math.isSignedIntPrimitiveType(T))) {
         return Vec2I(T);
-    }
-    else if(comptime(gba.math.isUnsignedIntPrimitiveType(T))) {
+    } else if (comptime (gba.math.isUnsignedIntPrimitiveType(T))) {
         return Vec2U(T);
-    }
-    else {
+    } else {
         @compileError("No Vec2 implementation is available for this type.");
     }
 }
@@ -26,54 +22,54 @@ pub fn Vec2(comptime T: type) type {
 pub const Vec2B = packed struct(u2) {
     const Self = @This();
     const T = bool;
-    
+
     pub const one: Vec2B = .init(true, true);
     pub const zero: Vec2B = .init(false, false);
     pub const x_1: Vec2B = .init(true, false);
     pub const y_1: Vec2B = .init(false, true);
-    
+
     pub const both = one;
     pub const neither = zero;
     pub const only_x = x_1;
     pub const only_y = y_1;
-    
+
     x: T = false,
     y: T = false,
-    
+
     pub fn init(x: T, y: T) Self {
         return .{ .x = x, .y = y };
     }
-    
+
     /// Invert each component, i.e. `!self`.
     pub fn invert(self: Self) Self {
         return .{ .x = !self.x, .y = !self.y };
     }
-    
+
     /// Returns true when both components of the vector are false.
     pub fn isNeither(self: Self) bool {
         return !self.x and !self.y;
     }
-    
+
     /// Returns true when both components of the vector are true.
     pub fn isBoth(self: Self) bool {
         return self.x and self.y;
     }
-    
+
     /// Logical conjunction of two vectors, i.e. `a and b`.
     pub fn conj(a: Self, b: Self) Self {
         return .init(a.x and b.x, a.y and b.y);
     }
-    
+
     /// Logical disjunction of two vectors, i.e. `a or b`.
     pub fn disj(a: Self, b: Self) Self {
         return .init(a.x or b.x, a.y or b.y);
     }
-    
+
     /// Check if two vectors are equal.
     pub fn eql(a: Self, b: Self) Self {
         return a.x == b.x and a.y == b.y;
     }
-    
+
     /// Get the dot product of two vectors.
     pub fn dot(a: Self, b: Self) u2 {
         const x: u2 = @intFromBool(a.x and b.x);
@@ -89,9 +85,9 @@ pub fn Vec2I(comptime T: type) type {
     const T_negative_one = gba.math.negativeOne(T);
     return extern struct {
         const Self = @This();
-        
+
         pub const ComponentT: type = T;
-        
+
         pub const zero: Self = .init(T_zero, T_zero);
         pub const one: Self = .init(T_one, T_one);
         pub const left: Self = .init(T_negative_one, T_zero);
@@ -100,39 +96,36 @@ pub fn Vec2I(comptime T: type) type {
         pub const down: Self = .init(T_zero, T_one);
         pub const x_1: Self = .init(T_one, T_zero);
         pub const y_1: Self = .init(T_zero, T_one);
-        
+
         x: T = T_zero,
         y: T = T_zero,
-        
+
         pub fn init(x: T, y: T) Self {
             return .{ .x = x, .y = y };
         }
-        
+
         /// Convert the vector to a different type.
         pub fn toVec2(self: Self, comptime ToComponentT: type) Vec2(ToComponentT) {
-            if(comptime(ToComponentT == T)) {
+            if (comptime (ToComponentT == T)) {
                 return self;
-            }
-            else if(comptime(gba.math.isFixedPointType(T))) {
+            } else if (comptime (gba.math.isFixedPointType(T))) {
                 return .init(
                     self.x.to(ToComponentT),
                     self.y.to(ToComponentT),
                 );
-            }
-            else if(comptime(gba.math.isFixedPointType(ToComponentT))) {
+            } else if (comptime (gba.math.isFixedPointType(ToComponentT))) {
                 return .init(
                     .fromInt(@intCast(self.x)),
                     .fromInt(@intCast(self.y)),
                 );
-            }
-            else {
+            } else {
                 return .init(
                     @intCast(self.x),
                     @intCast(self.y),
                 );
             }
         }
-        
+
         /// Convert to a three-dimensional vector type.
         pub fn toVec3(
             self: Self,
@@ -144,7 +137,7 @@ pub fn Vec2I(comptime T: type) type {
             const v = self.toVec2(ToComponentT);
             return .init(v.x, v.y, z);
         }
-        
+
         /// Subtract this vector from the zero vector.
         pub fn negate(self: Self) Self {
             return .{
@@ -152,7 +145,7 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.negate(T, self.y),
             };
         }
-        
+
         /// Logical bit shift left on both components,
         /// with the number of bits known at comptime.
         pub fn lsl(self: Self, comptime bits: comptime_int) Self {
@@ -161,7 +154,7 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.lsl(T, self.y, bits),
             };
         }
-        
+
         /// Logical bit shift right on both components,
         /// with the number of bits known at comptime.
         pub fn lsr(self: Self, comptime bits: comptime_int) Self {
@@ -170,7 +163,7 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.lsr(T, self.y, bits),
             };
         }
-        
+
         /// Arithmetic bit shift right on both components,
         /// with the number of bits known at comptime.
         pub fn asr(self: Self, comptime bits: comptime_int) Self {
@@ -179,7 +172,7 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.asr(T, self.y, bits),
             };
         }
-        
+
         /// Logical bit shift left on both components,
         /// accepting a variable number of bits.
         pub fn lslVar(self: Self, bits: anytype) Self {
@@ -188,7 +181,7 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.lslVar(T, self.y, bits),
             };
         }
-        
+
         /// Logical bit shift right on both components,
         /// accepting a variable number of bits.
         pub fn lsrVar(self: Self, bits: anytype) Self {
@@ -197,7 +190,7 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.lsrVar(T, self.y, bits),
             };
         }
-        
+
         /// Arithmetic bit shift right on both components,
         /// accepting a variable number of bits.
         pub fn asrVar(self: Self, bits: anytype) Self {
@@ -206,53 +199,45 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.asrVar(T, self.y, bits),
             };
         }
-        
+
         /// Returns true when both components of the vector are zero.
         pub fn isZero(self: Self) bool {
-            return (
-                gba.math.eql(T, self.x, T_zero) and
-                gba.math.eql(T, self.y, T_zero)
-            );
+            return (gba.math.eql(T, self.x, T_zero) and
+                gba.math.eql(T, self.y, T_zero));
         }
-        
+
         /// Get the squared magnitude of the vector.
         pub fn hypotSq(self: Self) T {
-            return gba.math.add(
-                T,
-                gba.math.mul(T, self.x, self.x),
-                gba.math.mul(T, self.y, self.y)
-            );
+            return gba.math.add(T, gba.math.mul(T, self.x, self.x), gba.math.mul(T, self.y, self.y));
         }
-        
+
         /// Get the magnitude of the vector, i.e. the length of
         /// the hypotenuse of the triangle formed by this vector.
         pub fn hypot(self: Self) T {
             const sq = self.hypotSq();
-            if(comptime(gba.math.isFixedPointType(T))) {
+            if (comptime (gba.math.isFixedPointType(T))) {
                 return .initRaw(gba.bios.sqrt(sq.value));
-            }
-            else {
+            } else {
                 return gba.bios.sqrt(sq);
             }
         }
-        
+
         /// Computes the arctangent of `y / x`.
         /// Calls `gba.bios.arctan2`.
         pub fn atan2(self: Self) gba.math.FixedU16R16 {
-            if(comptime(gba.math.isFixedPointType(T))) {
+            if (comptime (gba.math.isFixedPointType(T))) {
                 return gba.bios.arctan2(
                     @intCast(self.x.value),
                     @intCast(self.y.value),
                 );
-            }
-            else {
+            } else {
                 return gba.bios.arctan2(
                     @intCast(self.x),
                     @intCast(self.y),
                 );
             }
         }
-        
+
         /// Add two vectors.
         pub fn add(a: Self, b: Self) Self {
             return .{
@@ -260,7 +245,7 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.add(T, a.y, b.y),
             };
         }
-        
+
         /// Subtract vector `b` from vector `a`.
         pub fn sub(a: Self, b: Self) Self {
             return .{
@@ -268,7 +253,7 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.sub(T, a.y, b.y),
             };
         }
-        
+
         /// Multiply both components of a vector by a scalar value.
         pub fn scale(self: Self, scalar: T) Self {
             return .{
@@ -276,15 +261,13 @@ pub fn Vec2I(comptime T: type) type {
                 .y = gba.math.mul(T, self.y, scalar),
             };
         }
-        
+
         /// Check if two vectors are equal.
         pub fn eql(a: Self, b: Self) Self {
-            return (
-                gba.math.eql(T, a.x, b.x) and
-                gba.math.eql(T, a.y, b.y)
-            );
+            return (gba.math.eql(T, a.x, b.x) and
+                gba.math.eql(T, a.y, b.y));
         }
-        
+
         /// Get the dot product of two vectors.
         pub fn dot(a: Self, b: Self) T {
             return gba.math.add(
@@ -300,40 +283,38 @@ pub fn Vec2I(comptime T: type) type {
 pub fn Vec2U(comptime T: type) type {
     return extern struct {
         const Self = @This();
-        
+
         pub const ComponentT: type = T;
-        
+
         pub const zero: Self = .init(0, 0);
         pub const one: Self = .init(1, 1);
         pub const x_1: Self = .init(1, 0);
         pub const y_1: Self = .init(0, 1);
-        
+
         x: T,
         y: T,
-        
+
         pub fn init(x: T, y: T) Self {
             return .{ .x = x, .y = y };
         }
-        
+
         /// Convert the vector to a different type.
         pub fn toVec2(self: Self, comptime ToComponentT: type) Vec2(ToComponentT) {
-            if(comptime(ToComponentT == T)) {
+            if (comptime (ToComponentT == T)) {
                 return self;
-            }
-            else if(comptime(gba.math.isFixedPointType(ToComponentT))) {
+            } else if (comptime (gba.math.isFixedPointType(ToComponentT))) {
                 return .init(
                     .fromInt(@intCast(self.x)),
                     .fromInt(@intCast(self.y)),
                 );
-            }
-            else {
+            } else {
                 return .init(
                     @intCast(self.x),
                     @intCast(self.y),
                 );
             }
         }
-        
+
         /// Logical bit shift left on both components,
         /// with the number of bits known at comptime.
         pub fn lsl(self: Self, comptime bits: comptime_int) Self {
@@ -342,7 +323,7 @@ pub fn Vec2U(comptime T: type) type {
                 .y = gba.math.lsl(T, self.y, bits),
             };
         }
-        
+
         /// Logical bit shift right on both components,
         /// with the number of bits known at comptime.
         pub fn lsr(self: Self, comptime bits: comptime_int) Self {
@@ -351,7 +332,7 @@ pub fn Vec2U(comptime T: type) type {
                 .y = gba.math.lsr(T, self.y, bits),
             };
         }
-        
+
         /// Arithmetic bit shift right on both components,
         /// with the number of bits known at comptime.
         pub fn asr(self: Self, comptime bits: comptime_int) Self {
@@ -360,7 +341,7 @@ pub fn Vec2U(comptime T: type) type {
                 .y = gba.math.asr(T, self.y, bits),
             };
         }
-        
+
         /// Logical bit shift left on both components,
         /// accepting a variable number of bits.
         pub fn lslVar(self: Self, bits: anytype) Self {
@@ -369,7 +350,7 @@ pub fn Vec2U(comptime T: type) type {
                 .y = gba.math.lslVar(T, self.y, bits),
             };
         }
-        
+
         /// Logical bit shift right on both components,
         /// accepting a variable number of bits.
         pub fn lsrVar(self: Self, bits: anytype) Self {
@@ -378,7 +359,7 @@ pub fn Vec2U(comptime T: type) type {
                 .y = gba.math.lsrVar(T, self.y, bits),
             };
         }
-        
+
         /// Arithmetic bit shift right on both components,
         /// accepting a variable number of bits.
         pub fn asrVar(self: Self, bits: anytype) Self {
@@ -387,24 +368,24 @@ pub fn Vec2U(comptime T: type) type {
                 .y = gba.math.asrVar(T, self.y, bits),
             };
         }
-        
+
         /// Returns true when both components of the vector are zero.
         pub fn isZero(self: Self) bool {
             return self.x == 0 and self.y == 0;
         }
-        
+
         /// Get the squared magnitude of the vector, i.e. the length of
         /// the hypotenuse of the triangle formed by this vector.
         pub fn hypotSq(self: Self) T {
             return self.x * self.x + self.y * self.y;
         }
-        
+
         /// Computes the arctangent of `y / x`.
         /// Calls `gba.bios.arctan2`.
         pub fn atan2(self: Self) gba.math.FixedU16R16 {
             return gba.bios.arctan2(@intCast(self.x), @intCast(self.y));
         }
-        
+
         /// Add two vectors.
         pub fn add(a: Self, b: Self) Self {
             return .{
@@ -412,7 +393,7 @@ pub fn Vec2U(comptime T: type) type {
                 .y = gba.math.add(T, a.y, b.y),
             };
         }
-        
+
         /// Subtract vector `b` from vector `a`.
         pub fn sub(a: Self, b: Self) Self {
             return .{
@@ -420,7 +401,7 @@ pub fn Vec2U(comptime T: type) type {
                 .y = gba.math.sub(T, a.y, b.y),
             };
         }
-        
+
         /// Multiply both components of a vector by a scalar value.
         pub fn scale(self: Self, scalar: T) Self {
             return .{
@@ -428,15 +409,13 @@ pub fn Vec2U(comptime T: type) type {
                 .y = gba.math.mul(T, self.y, scalar),
             };
         }
-        
+
         /// Check if two vectors are equal.
         pub fn eql(a: Self, b: Self) Self {
-            return (
-                gba.math.eql(T, a.x, b.x) and
-                gba.math.eql(T, a.y, b.y)
-            );
+            return (gba.math.eql(T, a.x, b.x) and
+                gba.math.eql(T, a.y, b.y));
         }
-        
+
         /// Get the dot product of two vectors.
         pub fn dot(a: Self, b: Self) T {
             return gba.math.add(

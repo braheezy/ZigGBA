@@ -9,7 +9,7 @@ pub const ChannelFlags = packed struct(u4) {
     pub const all: ChannelFlags = @bitCast(0xf);
     /// No flags set.
     pub const none: ChannelFlags = .{};
-    
+
     /// PSG channel 1.
     pulse_1: bool = false,
     /// PSG channel 2.
@@ -269,7 +269,7 @@ pub const Control = packed struct(u32) {
         right_wave: bool = false,
         /// Enable noise channel for right speaker.
         right_noise: bool = false,
-        
+
         pub fn init(
             volume_left: u3,
             volume_right: u3,
@@ -339,7 +339,7 @@ pub const Control = packed struct(u32) {
         /// this will cause DMA to reset the FIFO buffer after it's used.
         reset_b: bool = false,
     };
-    
+
     /// Corresponds to REG_SNDDMGCNT.
     dmg: Dmg = .{},
     /// Corresponds to REG_SNDDSCNT.
@@ -370,7 +370,7 @@ pub const Status = packed struct(u16) {
     master: bool = false,
     /// Unused bits.
     _2: u8 = 0,
-    
+
     /// Initialize a `Status value with a given value for the master audio
     /// enabled/disabled flag.
     pub fn init(master: bool) Status {

@@ -5,32 +5,24 @@ pub const BackgroundSize = packed union {
     /// Represents possible sizes for normal (non-affine) backgrounds.
     pub const Normal = packed struct(u2) {
         /// 32 tiles wide and 32 tiles tall. Uses one screenblock.
-        pub const size_32x32 = (
-            BackgroundSize.Normal{ .x = .size_32, .y = .size_32 }
-        );
+        pub const size_32x32 = (BackgroundSize.Normal{ .x = .size_32, .y = .size_32 });
         /// 64 tiles wide and 32 tiles tall. Uses two screenblocks.
-        pub const size_64x32 = (
-            BackgroundSize.Normal{ .x = .size_64, .y = .size_32 }
-        );
+        pub const size_64x32 = (BackgroundSize.Normal{ .x = .size_64, .y = .size_32 });
         /// 32 tiles wide and 64 tiles tall. Uses two screenblocks.
-        pub const size_32x64 = (
-            BackgroundSize.Normal{ .x = .size_32, .y = .size_64 }
-        );
+        pub const size_32x64 = (BackgroundSize.Normal{ .x = .size_32, .y = .size_64 });
         /// 64 tiles wide and 64 tiles tall. Uses four screenblocks.
-        pub const size_64x64 = (
-            BackgroundSize.Normal{ .x = .size_64, .y = .size_64 }
-        );
-        
+        pub const size_64x64 = (BackgroundSize.Normal{ .x = .size_64, .y = .size_64 });
+
         pub const Value = enum(u1) {
             size_32 = 0,
             size_64 = 1,
         };
-        
+
         /// When 0, the background is 32 tiles wide. When 1, 64 tiles wide.
         x: Value = .size_32,
         /// When 0, the background is 32 tiles tall. When 1, 64 tiles tall.
         y: Value = .size_32,
-        
+
         /// Get the number of screenblocks used by a background of this size.
         pub fn getScreenblockCount(self: Normal) u3 {
             return (@as(u3, @intFromEnum(self.x)) + 1) << @intFromEnum(self.y);
@@ -52,12 +44,12 @@ pub const BackgroundSize = packed union {
         /// 128 tiles wide and tall.
         /// Uses eight screenblocks.
         size_128 = 3,
-        
+
         /// Get the number of screenblocks used by a background of this size.
         /// Note that `size_16` and `size_32` use only a part of one
         /// screenblock.
         pub fn getScreenblockCount(self: Normal) u4 {
-            return switch(self) {
+            return switch (self) {
                 .size_16 => 1,
                 .size_32 => 1,
                 .size_64 => 2,
@@ -65,7 +57,7 @@ pub const BackgroundSize = packed union {
             };
         }
     };
-    
+
     /// Size option for normal (non-affine) backgrounds.
     /// 32 tiles wide and 32 tiles tall. Uses one screenblock.
     pub const normal_32x32: BackgroundSize = .{ .normal = Normal.size_32x32 };
@@ -96,12 +88,12 @@ pub const BackgroundSize = packed union {
     /// Determines size for affine backgrounds.
     /// Affine backgrounds are always square.
     affine: Affine,
-    
+
     /// Initialize for a normal (non-affine) background.
     pub fn init(size_normal: Normal) BackgroundSize {
         return .{ .normal = size_normal };
     }
-    
+
     /// Initialize for an affine background.
     pub fn initAffine(size_affine: Affine) BackgroundSize {
         return .{ .affine = size_affine };
@@ -156,7 +148,7 @@ pub const BackgroundControl = packed struct(u16) {
     /// Size values differ depending on whether the background is affine or not.
     /// Larger sizes use more screenblocks.
     size: BackgroundSize = .normal_32x32,
-    
+
     /// Options relevant to initializing for a normal (non-affine) background.
     /// These options are accepted by the `init` function.
     pub const InitOptions = struct {
@@ -175,7 +167,7 @@ pub const BackgroundControl = packed struct(u16) {
         /// Determines the size of the background.
         size: BackgroundSize.Normal = .size_32x32,
     };
-    
+
     /// Options relevant to initializing for an affine background.
     /// These options are accepted by the `initAffine` function.
     pub const InitAffineOptions = struct {
@@ -193,7 +185,7 @@ pub const BackgroundControl = packed struct(u16) {
         /// Determines the size of the background.
         size: BackgroundSize.Affine = .size_16,
     };
-    
+
     /// Initialize for a normal (non-affine) background.
     pub fn init(options: InitOptions) BackgroundControl {
         return .{
@@ -205,7 +197,7 @@ pub const BackgroundControl = packed struct(u16) {
             .size = .init(options.size),
         };
     }
-    
+
     /// Initialize for an affine background.
     pub fn initAffine(options: InitAffineOptions) BackgroundControl {
         return .{
@@ -233,9 +225,7 @@ pub const bg_scroll: *volatile [4]gba.math.Vec2I16 = @ptrCast(gba.mem.io.reg_bg_
 
 /// Corresponds to REG_BG_AFFINE.
 /// See `bg_2_affine` and `bg_3_affine`.
-pub const bg_affine: *volatile [2]gba.math.Affine3x2 = (
-    @ptrCast(gba.mem.io.reg_bg_affine)
-);
+pub const bg_affine: *volatile [2]gba.math.Affine3x2 = (@ptrCast(gba.mem.io.reg_bg_affine));
 
 /// Holds an affine transformation matrix with a displacement/translation
 /// vector for background 2, when in affine mode. (Mode 1 or Mode 2.)

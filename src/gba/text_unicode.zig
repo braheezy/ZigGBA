@@ -14,7 +14,7 @@ pub const CodePointAlignment = enum {
 
 /// Get alignment information for a Unicode code point.
 pub fn getCodePointAlignment(point: i32) CodePointAlignment {
-    return switch(point) {
+    return switch (point) {
         // Etc.
         -0x80000000...-1 => .normal,
         0x0000...0x2fff => .normal,
@@ -81,33 +81,33 @@ pub const CodePointIterator = struct {
     text: []const u8,
     /// Current byte index within the encoded text.
     index: u32 = 0,
-    
+
     pub fn init(text: []const u8) CodePointIterator {
         return CodePointIterator{ .text = text };
     }
-    
+
     /// Decode and return the next Unicode code point.
     /// Returns -1 upon reaching the end of the encoded text.
     /// Return value is undefined when the input is not valid UTF-8.
     pub fn next(self: *CodePointIterator) i32 {
-        if(self.index >= self.text.len) {
+        if (self.index >= self.text.len) {
             return -1;
         }
         const ch0: i32 = self.text[self.index];
         self.index += 1;
-        if((ch0 & 0x80) == 0) {
+        if ((ch0 & 0x80) == 0) {
             return ch0;
         }
-        if((ch0 & 0xe0) == 0xc0) {
+        if ((ch0 & 0xe0) == 0xc0) {
             const ch1: i32 = self.continuation();
             return ((ch0 & 0x1f) << 6) | ch1;
         }
-        if((ch0 & 0xf0) == 0xe0) {
+        if ((ch0 & 0xf0) == 0xe0) {
             const ch1: i32 = self.continuation();
             const ch2: i32 = self.continuation();
             return ((ch0 & 0x0f) << 12) | (ch1 << 6) | ch2;
         }
-        if((ch0 & 0xf8) == 0xf0) {
+        if ((ch0 & 0xf8) == 0xf0) {
             const ch1: i32 = self.continuation();
             const ch2: i32 = self.continuation();
             const ch3: i32 = self.continuation();
@@ -115,18 +115,18 @@ pub const CodePointIterator = struct {
         }
         return 0;
     }
-    
+
     /// Decode the next code point without advancing the position of
     /// the iterator.
     pub fn peek(self: CodePointIterator) i32 {
         const iter = CodePointIterator{ .text = self.text, .index = self.index };
         return iter.next();
     }
-    
+
     /// Helper function used by `CodePointIterator.next` to fetch the
     /// next continuation byte.
     fn continuation(self: *CodePointIterator) u8 {
-        if(self.index >= self.text.len) {
+        if (self.index >= self.text.len) {
             return 0;
         }
         const unit = self.text[self.index];
