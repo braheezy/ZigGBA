@@ -31,14 +31,14 @@ export fn _start_zig() noreturn {
     });
     // Copy .iwram section to IWRAM.
     gba.bios.cpuSetCopy32(
-        @alignCast(@ptrCast(&__iwram_lma)),
-        @alignCast(@ptrCast(&__iwram_start__)),
+        @ptrCast(@alignCast(&__iwram_lma)),
+        @ptrCast(@alignCast(&__iwram_start__)),
         @truncate(@intFromPtr(&__iwram_end__) - @intFromPtr(&__iwram_start__)),
     );
     // Copy .data section to EWRAM.
     gba.bios.cpuSetCopy32(
-        @alignCast(@ptrCast(&__data_lma)),
-        @alignCast(@ptrCast(&__data_start__)),
+        @ptrCast(@alignCast(&__data_lma)),
+        @ptrCast(@alignCast(&__data_start__)),
         @truncate(@intFromPtr(&__data_end__) - @intFromPtr(&__data_start__)),
     );
     // Initialize default ISR.

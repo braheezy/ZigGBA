@@ -70,13 +70,30 @@ SECTIONS
     } >ewram = 0xff
 
     __bss_lma = .;
-    .bss ALIGN(4) (NOLOAD): AT(__bss_lma) {
+    .bss ALIGN(8) (NOLOAD): AT(__bss_lma) {
         __bss_start__ = ABSOLUTE(.);
         *(.dynbss)
         *(.gnu.linkonce.b*)
         *(.bss)
         *(COMMON)
-        . = ALIGN(4);
+        . = ALIGN(8);
         __bss_end__ = ABSOLUTE(.);
     } >ewram
+
+    .iwram : AT(__data_lma + SIZEOF(.data)) {
+        __iwram_start__ = ABSOLUTE(.);
+        *(.iwram*)
+        . = ALIGN(4);
+        __iwram_end__ = ABSOLUTE(.);
+    } >iwram
+
+    /* Record load address of iwram section in ROM */
+    __iwram_lma = LOADADDR(.iwram);
+
+    .sbss : {
+        __sbss_start__ = ABSOLUTE(.);
+        *(.sbss*)
+        . = ALIGN(4);
+        __sbss_end__ = ABSOLUTE(.);
+    } >iwram
 }

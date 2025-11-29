@@ -6,3 +6,4 @@ zig-cache
 *.bin
 *.log
 /zig-out
+*.lz

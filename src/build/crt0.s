@@ -2,6 +2,7 @@
     .global _start
     .cpu arm7tdmi
     .extern _start_zig
+    .extern isr_master
     .arm
 
 _start:
@@ -19,7 +20,7 @@ _start:
     mov     r0, #0x1f
     msr     cpsr, r0
     ldr     sp, _start_sp_usr_word
-    
+
     // Call into zig code
     ldr     r0, _start_zig_word
     bx      r0
@@ -30,3 +31,5 @@ _start:
     _start_sp_irq_word: .word __sp_irq
     _start_sp_usr_word: .word __sp_usr
     _start_zig_word: .word _start_zig
+    _isr_master_word: .word isr_master
+    _irq_vector_word: .word 0x03007FFC
