@@ -1,0 +1,12 @@
+.{
+    .name = .cc_helper,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.15.1",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src/objcopy.zig",
+        "LICENSE",
+    },
+    .fingerprint = 0x3eeb4dda2474f125,
+}

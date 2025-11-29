@@ -10,7 +10,7 @@
             // .hash = "zigimg-0.1.0-8_eo2oXXEgAXqKBEuHSH2AodfXVEnCWn5JSGQKkmh1g4",
         },
         .cc_helper = .{
-            .path = "cc_helper",
+            .path = "vendor/cc_helper",
             // .url = "git+https://codeberg.org/xbx/cc_helper.git#1076ea283acb25974346acd467599aeaf832ed01",
             // .hash = "cc_helper-0.0.1-JfF0JHEqAQDP3PvsaYXbQOjpZthAR5AOTwGDdZebxyRE",
         },
