@@ -151,13 +151,13 @@ const Glyph = struct {
 /// This is a convenience wrapper around `buildFont` which accepts
 /// an image file path to read image data from.
 pub fn buildFontPath(
+    allocator: std.mem.Allocator,
+    io: std.Io,
     image_path: []const u8,
     grid_size: Vec2U16,
     image_rect: RectU16,
-    allocator: std.mem.Allocator,
-    std_io: std.Io,
 ) ![]u8 {
-    var image = try Image.fromFilePath(allocator, std_io, image_path);
+    var image = try Image.fromFilePath(allocator, io, image_path);
     defer image.deinit(allocator);
     return buildFont(image, grid_size, image_rect, allocator);
 }
@@ -166,6 +166,10 @@ pub fn buildFontPath(
 /// both an image file path to read image data from and an output file path
 /// to write the resulting data to.
 pub fn buildSaveFontPath(
+    /// Use this allocator.
+    allocator: std.mem.Allocator,
+    // Use this IO
+    io: std.Io,
     /// Read image from this path.
     image_path: []const u8,
     /// Write encoded binary font data, suitable for embedding, to this path.
@@ -174,16 +178,13 @@ pub fn buildSaveFontPath(
     grid_size: Vec2U16,
     /// Rectangle within the image to read glyphs from.
     image_rect: RectU16,
-    /// Use this allocator.
-    allocator: std.mem.Allocator,
-    std_io: std.Io,
 ) !void {
     const font_data = try buildFontPath(
+        allocator,
+        io,
         image_path,
         grid_size,
         image_rect,
-        allocator,
-        std_io,
     );
     defer allocator.free(font_data);
     var file = try std.fs.cwd().createFile(output_path, .{});
@@ -244,9 +245,13 @@ pub fn buildFont(
 pub const BuildFontsStep = struct {
     step: std.Build.Step,
     b: *GbaBuild,
+    io: std.Io,
 
     pub fn create(b: *GbaBuild) *BuildFontsStep {
         const fonts_step = (b.allocator().create(BuildFontsStep) catch @panic("OOM"));
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
+        const io = threaded.io();
         fonts_step.* = .{
             .b = b,
             .step = std.Build.Step.init(.{
@@ -255,6 +260,7 @@ pub const BuildFontsStep = struct {
                 .makeFn = make,
                 .name = "BuildFontsStep",
             }),
+            .io = io,
         };
         return fonts_step;
     }
@@ -287,17 +293,13 @@ pub const BuildFontsStep = struct {
             const output_path_str = try output_path_cache.toString(self.b.allocator());
             defer self.b.allocator().free(output_path_str);
 
-            var threaded: std.Io.Threaded = .init_single_threaded;
-            defer threaded.deinit();
-            const std_io = threaded.io();
-
             try buildSaveFontPath(
+                self.b.allocator(),
+                self.io,
                 image_path_str,
                 output_path_str,
                 charset.grid_size,
                 charset.image_rect,
-                self.b.allocator(),
-                std_io,
             );
             root_node.completeOne();
         }

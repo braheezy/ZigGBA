@@ -1,4 +1,4 @@
-const zigimg = @import("zigimg").zigimg;
+const zpix = @import("zpix/root.zig");
 const std = @import("std");
 const assert = @import("std").debug.assert;
 const ColorRgba32 = @import("color.zig").ColorRgba32;
@@ -34,42 +34,33 @@ pub const ConvertImageTiles4BppStep = @import("image_tiles.zig").ConvertImageTil
 pub const ConvertImageTiles8BppStep = @import("image_tiles.zig").ConvertImageTiles8BppStep;
 
 /// Provides an interface for loading and reading image data.
-/// Wraps a `zigimg.Image`, but it could wrap something else in the future
-/// while providing the same interface.
 pub const Image = struct {
-    data: zigimg.Image,
+    data: zpix.image.Image,
 
     /// Load image from a file path.
     pub fn fromFilePath(
         allocator: std.mem.Allocator,
-        std_io: std.Io,
+        io: std.Io,
         path: []const u8,
-    ) (std.mem.Allocator.Error ||
-        zigimg.Image.ReadError ||
-        std.fs.File.OpenError)!Image {
-        var buffer: [2048]u8 = undefined;
-        const data = try zigimg.Image.fromFilePath(allocator, std_io, path, &buffer);
+    ) !Image {
+        // var buffer: [2048]u8 = undefined;
+        const data = try zpix.fromFilePath(allocator, io, path);
         return .{ .data = data };
-    }
-
-    /// Check whether the instance possesses valid image data.
-    pub fn isValid(self: Image) bool {
-        return self.data.pixelFormat() != .invalid;
     }
 
     /// Free memory in use by this image.
     pub fn deinit(self: *Image, allocator: std.mem.Allocator) void {
-        self.data.deinit(allocator);
+        self.data.free(allocator);
     }
 
     /// Get the width of the image, in pixels.
     pub fn getWidth(self: Image) u16 {
-        return @intCast(self.data.width);
+        return @intCast(self.data.width());
     }
 
     /// Get the height of the image, in pixels.
     pub fn getHeight(self: Image) u16 {
-        return @intCast(self.data.height);
+        return @intCast(self.data.height());
     }
 
     /// Get a rectangle representing the bounds of the image.
@@ -99,7 +90,6 @@ pub const Image = struct {
 
     /// Get the color of a pixel at a given coordinate.
     pub fn getPixelColor(self: Image, x: u16, y: u16) ColorRgba32 {
-        assert(self.isValid());
         assert(x < self.getWidth());
         assert(y < self.getHeight());
         const i = x + (y * self.getWidth());
@@ -108,71 +98,7 @@ pub const Image = struct {
 };
 
 /// Helper to get RGBA8888 color from an image.
-fn getImagePixelRgba32(image: zigimg.Image, index: usize) ColorRgba32 {
-    return switch (image.pixels) {
-        .invalid => .transparent,
-        .indexed1 => |px| @bitCast(px.palette[px.indices[index]]),
-        .indexed2 => |px| @bitCast(px.palette[px.indices[index]]),
-        .indexed4 => |px| @bitCast(px.palette[px.indices[index]]),
-        .indexed8 => |px| @bitCast(px.palette[px.indices[index]]),
-        .indexed16 => |px| @bitCast(px.palette[px.indices[index]]),
-        .grayscale1 => |px| {
-            const i: u8 = if (px[index].value == 0) 0 else 0xff;
-            return ColorRgba32.fromIntensity(i);
-        },
-        .grayscale2 => |px| {
-            const i_table = [4]u8{ 0x00, 0x55, 0xaa, 0xff };
-            const i = i_table[px[index].value];
-            return ColorRgba32.fromIntensity(i);
-        },
-        .grayscale4 => |px| {
-            const i = (@as(u8, px[index].value) << 4) | px[index].value;
-            return ColorRgba32.fromIntensity(i);
-        },
-        .grayscale8 => |px| {
-            const i = px[index].value;
-            return ColorRgba32.fromIntensity(i);
-        },
-        .grayscale8Alpha => |px| {
-            const i = px[index].value;
-            return ColorRgba32.fromIntensity(i).withAlpha(px[index].alpha);
-        },
-        .grayscale16 => |px| {
-            const i: u8 = @truncate(px[index].value);
-            return ColorRgba32.fromIntensity(i);
-        },
-        .grayscale16Alpha => |px| {
-            const i: u8 = @truncate(px[index].value);
-            const a: u8 = @truncate(px[index].alpha);
-            return ColorRgba32.fromIntensity(i).withAlpha(a);
-        },
-        .rgb24 => |px| .rgb(px[index].r, px[index].g, px[index].b),
-        .rgba32 => |px| .rgba(px[index].r, px[index].g, px[index].b, px[index].a),
-        .rgb332 => |px| .rgb(px[index].r, px[index].g, px[index].b),
-        .rgb565 => |px| .rgb(px[index].r, px[index].g, px[index].b),
-        .rgb555 => |px| .rgb(px[index].r, px[index].g, px[index].b),
-        .bgr555 => |px| .rgb(px[index].r, px[index].g, px[index].b),
-        .bgr24 => |px| .rgb(px[index].r, px[index].g, px[index].b),
-        .bgra32 => |px| .rgba(px[index].r, px[index].g, px[index].b, px[index].a),
-        .rgb48 => |px| {
-            const r: u8 = @truncate(px[index].r);
-            const g: u8 = @truncate(px[index].g);
-            const b: u8 = @truncate(px[index].b);
-            return .rgb(r, g, b);
-        },
-        .rgba64 => |px| {
-            const r: u8 = @truncate(px[index].r);
-            const g: u8 = @truncate(px[index].g);
-            const b: u8 = @truncate(px[index].b);
-            const a: u8 = @truncate(px[index].a);
-            return .rgba(r, g, b, a);
-        },
-        .float32 => |px| {
-            const r: u8 = @intFromFloat(@round(px[index].r));
-            const g: u8 = @intFromFloat(@round(px[index].g));
-            const b: u8 = @intFromFloat(@round(px[index].b));
-            const a: u8 = @intFromFloat(@round(px[index].a));
-            return .rgba(r, g, b, a);
-        },
-    };
+fn getImagePixelRgba32(image: zpix.image.Image, index: usize) ColorRgba32 {
+    const rgba = image.rgba8AtIndex(index);
+    return ColorRgba32.rgba(rgba.r, rgba.g, rgba.b, rgba.a);
 }

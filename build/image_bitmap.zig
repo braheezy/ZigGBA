@@ -86,11 +86,11 @@ pub const ConvertImageBitmap16BppError = ConvertImageBitmapError;
 /// an image file path to read image data from.
 pub fn convertImageBitmap8BppPath(
     allocator: std.mem.Allocator,
-    std_io: std.Io,
+    io: std.Io,
     image_path: []const u8,
     options: ConvertImageBitmap8BppOptions,
 ) !ConvertImageBitmap8BppOutput {
-    var image = try Image.fromFilePath(allocator, std_io, image_path);
+    var image = try Image.fromFilePath(allocator, io, image_path);
     defer image.deinit(allocator);
     return convertImageBitmap8Bpp(allocator, image, options);
 }
@@ -100,14 +100,14 @@ pub fn convertImageBitmap8BppPath(
 /// to write the resulting data to.
 pub fn convertSaveImageBitmap8BppPath(
     allocator: std.mem.Allocator,
-    std_io: std.Io,
+    io: std.Io,
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageBitmap8BppOptions,
 ) !void {
     const tiles_data = try convertImageBitmap8BppPath(
         allocator,
-        std_io,
+        io,
         image_path,
         options,
     );
@@ -125,9 +125,7 @@ pub fn convertImageBitmap8Bpp(
     options: ConvertImageBitmap8BppOptions,
 ) !ConvertImageBitmap8BppOutput {
     // Validate image and handle size
-    if (!image.isValid()) {
-        return ConvertImageBitmap8BppError.InvalidImage;
-    } else if (!options.allow_empty and image.isEmpty()) {
+    if (!options.allow_empty and image.isEmpty()) {
         return ConvertImageBitmap8BppError.EmptyImage;
     }
     const rect: RectU16 = options.rect orelse image.getRect();
@@ -236,6 +234,7 @@ pub const ConvertImageBitmap8BppStep = struct {
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageBitmap8BppOptions,
+    io: std.Io,
 
     pub fn create(b: *std.Build, options: Options) *ConvertImageBitmap8BppStep {
         const step_name = options.name orelse b.fmt(
@@ -243,10 +242,14 @@ pub const ConvertImageBitmap8BppStep = struct {
             .{ options.image_path, options.output_path },
         );
         const convert_step = (b.allocator.create(ConvertImageBitmap8BppStep) catch @panic("OOM"));
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
+        const io = threaded.io();
         convert_step.* = .{
             .image_path = options.image_path,
             .output_path = options.output_path,
             .options = options.options,
+            .io = io,
             .step = std.Build.Step.init(.{
                 .id = .custom,
                 .owner = b,
@@ -269,12 +272,9 @@ pub const ConvertImageBitmap8BppStep = struct {
         var node = make_options.progress_node.start(node_name, 1);
         defer node.end();
 
-        var threaded: std.Io.Threaded = .init_single_threaded;
-        defer threaded.deinit();
-        const std_io = threaded.io();
         try convertSaveImageBitmap8BppPath(
             step.owner.allocator,
-            std_io,
+            self.io,
             self.image_path,
             self.output_path,
             self.options,
