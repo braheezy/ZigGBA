@@ -54,6 +54,7 @@ SECTIONS
         __iwram_start__ = ABSOLUTE(.);
         KEEP(*(.gba_math_iwram))
         KEEP(*(.gba_mem_iwram))
+        *(.iwram*)
         . = ALIGN(4);
         __iwram_end__ = ABSOLUTE(.);
     } >iwram = 0xff
