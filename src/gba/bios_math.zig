@@ -118,7 +118,7 @@ pub fn sqrt(x: u32) u16 {
 /// Normally uses a GBA BIOS function, but also implements a fallback to run
 /// as you would expect in tests and at comptime where the GBA BIOS is not
 /// available.
-pub fn arctan(x: gba.math.FixedU16R14) gba.math.FixedU16R16 {
+pub fn arctan(x: gba.math.FixedU16R16) gba.math.FixedU16R16 {
     if (comptime (!isGbaTarget())) {
         // Reference: https://github.com/ez-me/gba-bios
         const x2 = @as(i32, x.value) * @as(i32, x.value);
@@ -130,7 +130,7 @@ pub fn arctan(x: gba.math.FixedU16R14) gba.math.FixedU16R16 {
         b = ((b * a) >> 14) + 0x2081;
         b = ((b * a) >> 14) + 0x3651;
         b = ((b * a) >> 14) + 0xa2f9;
-        return .initRaw((@as(i32, x.value) * b) >> 16);
+        return .initRaw(@intCast((@as(i32, x.value) * b) >> 16));
     } else {
         return asm volatile ("swi 0x09"
             : [ret] "={r0}" (-> gba.math.FixedU16R16),
@@ -149,22 +149,27 @@ pub fn arctan(x: gba.math.FixedU16R14) gba.math.FixedU16R16 {
 /// as you would expect in tests and at comptime where the GBA BIOS is not
 /// available.
 pub fn arctan2(x: i16, y: i16) gba.math.FixedU16R16 {
-    if (comptime (!isGbaTarget())) {
+    // TODO: Runs even when building a GBA ROM, and produces bad results anyway.
+    if (false) {
         // Reference: https://github.com/ez-me/gba-bios
         if (y == 0) {
-            return ((x >> 16) & 0x8000);
+            return .initRaw(@as(u16, @bitCast(x)) & 0x8000);
         } else if (x == 0) {
-            return ((y >> 16) & 0x8000) + 0x4000;
+            return .initRaw((@as(u16, @bitCast(y)) & 0x8000) + 0x4000);
         } else if (@abs(x) > @abs(y) or ((@abs(x) == @abs(y) and !(x < 0 and y < 0)))) {
-            const atan = arctan(div(@as(i32, y) << 14, x).quotient);
+            const ratio = div(@as(i32, y) << 14, x).quotient;
+            const atan = arctan(gba.math.FixedU16R16.initRaw(@intCast(@abs(ratio))));
             if (x < 0) {
-                return 0x8000 + atan;
+                return .initRaw(0x8000 +% atan.value);
             } else {
-                return (((y >> 16) & 0x8000) << 1) + atan;
+                const sign_bit = @as(u32, @as(u16, @bitCast(y)) & 0x8000);
+                return .initRaw(@truncate((sign_bit << 1) +% atan.value));
             }
         } else {
-            const atan = arctan(div(@as(i32, x) << 14, y).quotient);
-            return (0x4000 + ((y >> 16) & 0x8000)) - atan;
+            const ratio = div(@as(i32, x) << 14, y).quotient;
+            const atan = arctan(gba.math.FixedU16R16.initRaw(@intCast(@abs(ratio))));
+            const sign_bit = @as(u32, @as(u16, @bitCast(y)) & 0x8000);
+            return .initRaw(@truncate((0x4000 +% sign_bit) -% atan.value));
         }
     } else {
         return asm volatile ("swi 0x0a"

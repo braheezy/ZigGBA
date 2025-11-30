@@ -81,8 +81,8 @@ fn arctan2Demo(mode3: gba.display.Mode3Surface) void {
 
     for (0..gba.display.screen_width) |ix| {
         // raw Q2.14 fixed-point; >>8 yields tonc's y/256 integer offset
-        const y_off: i16 = bios.arctan2(x_val, @intCast(ix - ww));
-        const y_pos: u8 = @intCast(hh - (y_off >> 8));
+        const y_off = bios.arctan2(x_val, @intCast(ix - ww));
+        const y_pos: u8 = @intCast(hh - (y_off.value >> 8));
         mode3.setPixel(@intCast(ix), y_pos, ColorRgb555.magenta);
     }
 
@@ -100,7 +100,7 @@ pub export fn main() void {
     divDemo(mode3);
     sqrtDemo(mode3);
     affDemo(mode3);
-    // arctan2Demo(mode3);
+    arctan2Demo(mode3);
 
     while (true) {}
 }
