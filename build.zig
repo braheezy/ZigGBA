@@ -563,6 +563,11 @@ fn buildExamples(b: *GbaBuild) void {
         .root_source_file = b.path("examples/swiDemo/swiDemo.zig"),
         .build_options = .{ .text_charsets = .all },
     });
+    _ = b.addExecutable(.{
+        .name = "soundDemo",
+        .root_source_file = b.path("examples/soundDemo/soundDemo.zig"),
+        .build_options = .{ .text_charsets = .all },
+    });
 
     var bgAffine = b.addExecutable(.{
         .name = "bgAffine",
