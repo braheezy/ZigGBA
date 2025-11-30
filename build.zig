@@ -1,13 +1,12 @@
 //! Build script for ZigGBA - A GBA development library for Zig.
 
 const std = @import("std");
-const cc_helper = @import("cc_helper");
+
+pub const GbaBuild = @import("gba_build.zig").GbaBuild;
 
 // Import asset processing utilities
+const root_path = GbaBuild.ziggbaPath();
 const color = @import("build/color.zig");
-const font = @import("build/font.zig");
-
-const GbaBuild = @import("gba_build.zig").GbaBuild;
 
 /// Build all example ROMs.
 fn buildExamples(b: *GbaBuild) void {
