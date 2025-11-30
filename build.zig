@@ -497,6 +497,11 @@ fn buildExamples(b: *GbaBuild) void {
         .root_source_file = b.path("examples/first/first.zig"),
     });
     _ = b.addExecutable(.{
+        .name = "hello",
+        .root_source_file = b.path("examples/hello/hello.zig"),
+        .build_options = .{ .text_charsets = .{ .latin = true } },
+    });
+    _ = b.addExecutable(.{
         .name = "helloWorld",
         .root_source_file = b.path("examples/helloWorld/helloWorld.zig"),
         .build_options = .{ .text_charsets = .all },
