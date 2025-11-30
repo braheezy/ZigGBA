@@ -213,3 +213,9 @@ pub const irq_ack_bios: *volatile InterruptFlags = @ptrCast(gba.mem.io.reg_ifbio
 
 /// Corresponds to REG_IME.
 pub const master: *volatile Master = @ptrCast(gba.mem.io.reg_ime);
+
+pub fn init() void {
+    gba.interrupt.master.enable = true;
+    gba.interrupt.enable.vblank = true;
+    gba.display.status.vblank_interrupt = true;
+}
