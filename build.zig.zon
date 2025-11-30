@@ -9,6 +9,8 @@
         "build.zig.zon",
         "assets",
         "src",
+        "build",
+        "gba_build.zig",
         "LICENSE",
         "README.md",
     },
