@@ -2,17 +2,17 @@
 
 ZigGBA is an SDK for creating Game Boy Advance games using the [Zig](https://ziglang.org/) programming language. It is currently in a WIP/experimental state. This repository is a maintained fork of [wendigojaeger/ZigGBA](https://github.com/wendigojaeger/ZigGBA).
 
-For bug reports and feature requests, please submit a [GitHub issue](https://github.com/pineapplemachine/ziggba/issues). For general questions and support, you can submit an issue or you can visit the [gbadev Discord server](https://discord.gg/7DBJvgW9bb) which has a `#ziggba` channel for discussions specifically about this project, as well as other channels for more general discussions about GBA development.
+For bug reports and feature requests, please submit a [GitHub issue](https://github.com/braheezy/ziggba/issues). For general questions and support, you can submit an issue or you can visit the [gbadev Discord server](https://discord.gg/7DBJvgW9bb) which has a `#ziggba` channel for discussions specifically about this project, as well as other channels for more general discussions about GBA development.
 
 Many thanks to [TONC](https://gbadev.net/tonc/) and [GBATEK](https://problemkaputt.de/gbatek.htm), both of which have been major inspirations and resources for this project.
+
+## Usage
+
+The current support Zig version is `0.16.0-dev.1262+be4eaed7c`. Get it with `zigup 0.16.0-dev.1262+be4eaed7c`.
 
 Add to your `build.zig.zon`:
 
     zig fetch --save git+https://github.com/braheezy/ZigGBA.git
-
-If you want to use the build helper for converting assets (most users do), add `zigimg`:
-
-    zig fetch --save git+https://github.com/zigimg/zigimg.git
 
 In your `build.zig`:
 
@@ -22,100 +22,54 @@ const std = @import("std");
 const ziggba = @import("ziggba");
 
 pub fn build(b: *std.Build) void {
-    // Get the GBA module
-    const ziggba_dep = b.dependency("ziggba", .{});
-    const gba_mod = ziggba_dep.module("gba");
+  // Create the custom builder.
+  const gba_b = ziggba.GbaBuild.create(b);
 
-    // Using a build helper, build a GBA ROM from your source
-    _ = ziggba.addGBAExecutable(b, gba_mod, "tonc_tutor", "src/main.zig");
-
-    const mode4flip = ziggba.addGBAExecutable(b, gba_mod, "mode4flip", "mode4flip.zig");
-    // Convert bitmaps and create a palette. This requires `zigimg` in your `build.zig.zon`
-    ziggba.convertMode4Images(mode4flip, &[_]ziggba.ImageSourceTarget{
-        .{
-            .source = "front.bmp",
-            .target = "front.agi",
-        },
-        .{
-            .source = "back.bmp",
-            .target = "back.agi",
-        },
-    }, "mode4flip.agp");
+  // Make a ROM.
+  _ = gba_b.addExecutable(.{
+      // The output will be 'name.gba'
+      .name = "first",
+      // The main file to compile.
+      .root_source_file = b.path("first.zig"),
+  });
 }
+```
 
+And a minimal ROM:
+
+```zig
+// Import the main GBA framework
+const gba = @import("gba");
+
+// Required GBA header.
+export var header linksection(".gbaheader") = gba.Header.init("FIRST", "AFSE", "00", 0);
+
+// Required exported main function.
+pub export fn main() void {
+    gba.display.ctrl.* = .initMode3(.{});
+    const mode3 = gba.display.getMode3Surface();
+    mode3.setPixel(120, 80, .rgb(31, 0, 0));
+    mode3.setPixel(136, 80, .rgb(0, 31, 0));
+    mode3.setPixel(120, 96, .rgb(0, 0, 31));
+}
 ```
 
 ## Fork
 
-I'm learning GBA development from [Tonc](https://gbadev.net/tonc) and it's so well documented that it's fairly straightforward to add library support for missing features. Development in this fork happens at much greater rate than can be merged upstream. I've made large opinionated changes to things like that build system and I haven't figured out how to cleanly merge upstream.
+This fork has too many changes to document. The highlights are:
 
-### Features
+- Integrated Zig build system instead of git submodules
+- Many API rewrites and fixes
+- New core features: interrupts, sound, text
 
-It's mostly new demos from Tonc, but sometimes it requires extensive library edits to support:
 
-- `hello`: Basic screen entry text rendering. The `sys` and `verdana` fonts from Tonc are supported. There's basic layout format parsing support.
+## Build Details
 
-  ![hello](./examples/hello/hello.png)
-
-- Updated build system that doesn't use git submodules, as seen above.
-
-- L277 compression when creating image assets, decoded using GBA bios routines.
-
-```bash
-# Images are much smaller
-# Before
-ls -l examples/mode4flip/*agi
-38k examples/mode4flip/back.agi
-38k examples/mode4flip/front.agi
-# After
-ls -l examples/mode4fliplz/*lz
-6.3k examples/mode4fliplz/back.lz
-6.3k examples/mode4fliplz/front.lz
-# Making the rom smaller
-ls -l zig-out/bin/mode4flip*
-78k zig-out/bin/mode4flip.gba
-14k zig-out/bin/mode4fliplz.gba
-```
-
-- Basic interrupt routine behavior and ASM master isr table.
-
-  ![swi-vsync](./examples/swiVsync/swi-vsync.gif)
-
-- BIOS and software interrupt (`swi`) improvements. This shows bitmap text render support
-
-  <img width="576" height="371" alt="swi-demo" src="https://github.com/user-attachments/assets/78fba6cb-2237-4ac9-b858-b34747aadf44" />
-
-- Sound demo, with lots of screen entry text rendering:
-
-https://github.com/user-attachments/assets/fd172976-68c3-4222-9f3a-d6ee326c7f89
-
-## Build
-
-This library uses Zig 0.14.1. To install using [`zigup`](https://github.com/marler8997/zigup):
-
-```sh
-zigup 0.14.1
-```
-
-To build, simply use Zig's integrated build system
-
-```bash
-# Download this git repository
-git clone https://github.com/braheezy/ziggba.git
-# Navigate to the downloaded directory
-cd ziggba
-# Build `gba.text` font data used by examples
-zig build font
-# Compile example ROMs, outputted to `zig-out/bin/`
-zig build
-```
-
-ZigGBA's `zig build` will write example ROMs to `zig-out/bin/`. These are files with a `*.gba` extension which can be run on a GBA using special hardware, or which can run in emulators such as [mGBA](https://github.com/mgba-emu/mgba), [Mesen](https://github.com/SourMesen/Mesen2/), [no$gba](https://problemkaputt.de/gba.htm), and [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance).
+ZigGBA's `zig build` will write example ROMs to `zig-out/`. These are files with a `*.gba` extension which can be run on a GBA using special hardware, or which can run in emulators such as [mGBA](https://github.com/mgba-emu/mgba), [Mesen](https://github.com/SourMesen/Mesen2/), [no$gba](https://problemkaputt.de/gba.htm), and [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance).
 
 Pass the `-Dgdb` flag to `zig build` to also output an `*.elf` file containing debug symbols.
 
 See the [ziggba-example](https://www.github.com/pineapplemachine/ziggba-example) repository for an example of a project which uses ZigGBA as a dependency.
-
 
 ## Showcase
 
@@ -126,3 +80,17 @@ First example running on an emulator:
 First example running on real hardware:
 
 ![First example real hardware image](docs/images/FirstExampleRealHardware.png)
+
+A whole bunch of [examples](./examples/):
+
+<details>
+  <summary>bgAffine</summary>
+
+  ![bgAffine.webp](./examples/bgAffine/bgAffine.webp)
+</details>
+
+<details>
+  <summary>charBlock</summary>
+
+  ![charBlock.png](./examples/charBlock/charBlock.png)
+</details>
