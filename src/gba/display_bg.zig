@@ -225,7 +225,7 @@ pub const bg_scroll: *volatile [4]gba.math.Vec2I16 = @ptrCast(gba.mem.io.reg_bg_
 
 /// Corresponds to REG_BG_AFFINE.
 /// See `bg_2_affine` and `bg_3_affine`.
-pub const bg_affine: *volatile [2]gba.math.Affine3x2 = (@ptrCast(gba.mem.io.reg_bg_affine));
+pub const bg_affine: *volatile [2]gba.math.Affine3x2 = (@ptrCast(@alignCast(gba.mem.io.reg_bg_affine)));
 
 /// Holds an affine transformation matrix with a displacement/translation
 /// vector for background 2, when in affine mode. (Mode 1 or Mode 2.)

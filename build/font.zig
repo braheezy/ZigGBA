@@ -1,6 +1,6 @@
 const std = @import("std");
 const assert = @import("std").debug.assert;
-const GbaBuild = @import("../build.zig").GbaBuild;
+const GbaBuild = @import("../gba_build.zig").GbaBuild;
 const Image = @import("image.zig").Image;
 const RectU16 = @import("../src/gba/math.zig").RectU16;
 const Vec2U16 = @import("../src/gba/math.zig").Vec2U16;

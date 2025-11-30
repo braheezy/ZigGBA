@@ -6,6 +6,7 @@ const ColorQuantizer = @import("color.zig").ColorQuantizer;
 const Image = @import("image.zig").Image;
 const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
 const RectU16 = @import("../src/gba/math.zig").RectU16;
+const lz77 = @import("lz77.zig");
 
 /// Options expected by `convertImageBitmap8Bpp`.
 pub const ConvertImageBitmap8BppOptions = struct {
@@ -15,6 +16,8 @@ pub const ConvertImageBitmap8BppOptions = struct {
     rect: ?RectU16 = null,
     /// If not set, then an empty input image will trigger an error.
     allow_empty: bool = false,
+    /// If set, compress with LZ77.
+    compress_lz77: bool = false,
 };
 
 /// Options expected by `convertImageBitmap16Bpp`.
@@ -133,18 +136,23 @@ pub fn convertImageBitmap8Bpp(
         return ConvertImageBitmap8BppError.InvalidRect;
     }
     // Encode image data
-    var data = try allocator.alloc(u8, image.getSizePixels());
+    var data = try allocator.alloc(u8, rect.width * rect.height);
     for (0..rect.height) |pixel_y| {
         for (0..rect.width) |pixel_x| {
             const image_x: u16 = @intCast(pixel_x + rect.x);
             const image_y: u16 = @intCast(pixel_y + rect.y);
-            const i = image_x + (image_y * image.getWidth());
+            const i = pixel_x + (pixel_y * rect.width);
             data[i] = options.palettizer.get(.{
                 .color = image.getPixelColor(image_x, image_y),
                 .x = image_x,
                 .y = image_y,
             });
         }
+    }
+    if (options.compress_lz77) {
+        const compressed_data = try lz77.compress(allocator, data, true);
+        allocator.free(data);
+        data = compressed_data;
     }
     // All done
     return ConvertImageBitmap8BppOutput{

@@ -1,18 +1,18 @@
 const gba = @import("gba");
 
-export var header linksection(".gbaheader") = gba.initHeader("HELL", "AHEL", "00", 0);
+export var header linksection(".gbaheader") = gba.Header.init(
+    "AHELL",
+    "AHEL",
+    "00",
+    0,
+);
 
 export fn main() void {
-    gba.display.ctrl.* = .{
-        .mode = .mode0,
-        .bg0 = .enable,
-    };
+    gba.display.ctrl.* = .initMode3(.{});
 
-    gba.text.initSeDefault(0, .{
-        .tile_base_block = 0,
-        .screen_base_block = 31,
+    const mode3 = gba.display.getMode3Surface();
+    mode3.draw().text("Hello World!", .init(gba.ColorRgb555.white), .{
+        .x = 72,
+        .y = 64,
     });
-
-    gba.text.write("#{P:72,64}");
-    gba.text.write("Hello World!");
 }

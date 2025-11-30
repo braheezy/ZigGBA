@@ -95,8 +95,8 @@ pub fn bitUnPack(
 /// Common helper for implementing UnComp BIOS calls.
 inline fn unComp(
     comptime assembly: []const u8,
-    source: [*]const volatile anyopaque,
-    destination: [*]volatile anyopaque,
+    source: *const anyopaque,
+    destination: *anyopaque,
 ) void {
     asm volatile (assembly
         :

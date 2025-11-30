@@ -96,13 +96,13 @@ pub fn sqrt(x: u32) u16 {
         var root: u32 = 0;
         var t: u32 = undefined;
         for (N_items) |N| {
-            t = root + (1 << N);
+            t = root + (@as(u32, @intCast(1)) << N);
             if (n >= (t << N)) {
                 n -= (t << N);
-                root |= (2 << N);
+                root |= (@as(u16, @intCast(2)) << N);
             }
         }
-        return root >> 1;
+        return @intCast(root >> 1);
     } else {
         return asm volatile ("swi 0x08"
             : [ret] "={r0}" (-> u16),
@@ -118,7 +118,7 @@ pub fn sqrt(x: u32) u16 {
 /// Normally uses a GBA BIOS function, but also implements a fallback to run
 /// as you would expect in tests and at comptime where the GBA BIOS is not
 /// available.
-pub fn arctan(x: gba.math.FixedU16R14) gba.math.FixedU16R16 {
+pub fn arctan(x: gba.math.FixedU16R16) gba.math.FixedU16R16 {
     if (comptime (!isGbaTarget())) {
         // Reference: https://github.com/ez-me/gba-bios
         const x2 = @as(i32, x.value) * @as(i32, x.value);
@@ -130,7 +130,7 @@ pub fn arctan(x: gba.math.FixedU16R14) gba.math.FixedU16R16 {
         b = ((b * a) >> 14) + 0x2081;
         b = ((b * a) >> 14) + 0x3651;
         b = ((b * a) >> 14) + 0xa2f9;
-        return .initRaw((@as(i32, x.value) * b) >> 16);
+        return .initRaw(@intCast((@as(i32, x.value) * b) >> 16));
     } else {
         return asm volatile ("swi 0x09"
             : [ret] "={r0}" (-> gba.math.FixedU16R16),
@@ -149,22 +149,27 @@ pub fn arctan(x: gba.math.FixedU16R14) gba.math.FixedU16R16 {
 /// as you would expect in tests and at comptime where the GBA BIOS is not
 /// available.
 pub fn arctan2(x: i16, y: i16) gba.math.FixedU16R16 {
-    if (comptime (!isGbaTarget())) {
+    // TODO: Runs even when building a GBA ROM, and produces bad results anyway.
+    if (false) {
         // Reference: https://github.com/ez-me/gba-bios
         if (y == 0) {
-            return ((x >> 16) & 0x8000);
+            return .initRaw(@as(u16, @bitCast(x)) & 0x8000);
         } else if (x == 0) {
-            return ((y >> 16) & 0x8000) + 0x4000;
+            return .initRaw((@as(u16, @bitCast(y)) & 0x8000) + 0x4000);
         } else if (@abs(x) > @abs(y) or ((@abs(x) == @abs(y) and !(x < 0 and y < 0)))) {
-            const atan = arctan(div(@as(i32, y) << 14, x).quotient);
+            const ratio = div(@as(i32, y) << 14, x).quotient;
+            const atan = arctan(gba.math.FixedU16R16.initRaw(@intCast(@abs(ratio))));
             if (x < 0) {
-                return 0x8000 + atan;
+                return .initRaw(0x8000 +% atan.value);
             } else {
-                return (((y >> 16) & 0x8000) << 1) + atan;
+                const sign_bit = @as(u32, @as(u16, @bitCast(y)) & 0x8000);
+                return .initRaw(@truncate((sign_bit << 1) +% atan.value));
             }
         } else {
-            const atan = arctan(div(@as(i32, x) << 14, y).quotient);
-            return (0x4000 + ((y >> 16) & 0x8000)) - atan;
+            const ratio = div(@as(i32, x) << 14, y).quotient;
+            const atan = arctan(gba.math.FixedU16R16.initRaw(@intCast(@abs(ratio))));
+            const sign_bit = @as(u32, @as(u16, @bitCast(y)) & 0x8000);
+            return .initRaw(@truncate((0x4000 +% sign_bit) -% atan.value));
         }
     } else {
         return asm volatile ("swi 0x0a"
@@ -310,7 +315,7 @@ pub fn bgAffineSet(
 }
 
 /// The `objAffineSet` function expects a pointer argument to this struct.
-pub const ObjAffineSetOptions = packed struct {
+pub const ObjAffineSetOptions = extern struct {
     /// Scaling on each axis.
     scale: gba.math.Vec2FixedI16R8,
     /// Angle of rotation.
@@ -339,7 +344,7 @@ pub fn objAffineSetStruct(
     /// Write the computed transformation matrices here.
     destination: [*]volatile gba.math.Affine2x2,
 ) void {
-    objAffineSet(options, destination, 2);
+    objAffineSet(options, @ptrCast(destination), 2);
 }
 
 /// Can be used to calculate rotation and scaling parameters
@@ -399,24 +404,21 @@ pub fn objAffineSet(
             0xe783, 0xe8f8, 0xea71, 0xebed, 0xed6c, 0xeeef, 0xf074, 0xf1fb,
             0xf384, 0xf50f, 0xf69c, 0xf82b, 0xf9bb, 0xfb4b, 0xfcdd, 0xfe6e,
         };
-        const dest: *volatile gba.math.FixedI16R8 = @ptrCast(destination);
+        var dest_ptr: [*]align(2) volatile i16 = @ptrCast(destination);
         const dest_offset = offset >> 1;
         for (0..options.len) |i| {
             const theta: u16 = options[i].angle.value >> 8;
             const sin: i32 = @as(i16, @bitCast(sin_lut[theta]));
             const cos: i32 = @as(i16, @bitCast(sin_lut[(theta + 0x40) & 0xff]));
-            dest.* = .initRaw((options[i].scale.x.value * cos) >> 14);
-            dest += dest_offset;
-            dest.* = .initRaw(-((options[i].scale.x.value * sin) >> 14));
-            dest += dest_offset;
-            dest.* = .initRaw((options[i].scale.y.value * sin) >> 14);
-            dest += dest_offset;
-            dest.* = .initRaw((options[i].scale.y.value * cos) >> 14);
-            dest += dest_offset;
+            dest_ptr[0] = @truncate((options[i].scale.x.value * cos) >> 14);
+            dest_ptr[dest_offset] = @truncate(-((options[i].scale.x.value * sin) >> 14));
+            dest_ptr[dest_offset * 2] = @truncate((options[i].scale.y.value * sin) >> 14);
+            dest_ptr[dest_offset * 3] = @truncate((options[i].scale.y.value * cos) >> 14);
+            dest_ptr += dest_offset * 4;
         }
     } else {
         const options_len = options.len;
-        asm volatile ("swi 0x0e"
+        asm volatile ("swi 0x0f"
             :
             : [options] "{r0}" (options),
               [destination] "{r1}" (destination),
