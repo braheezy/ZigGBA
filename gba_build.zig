@@ -3,6 +3,7 @@ const std = @import("std");
 const font = @import("build/font.zig");
 const image = @import("build/image.zig");
 const color = @import("build/color.zig");
+const cc_objcopy = @import("vendor/cc_helper/src/objcopy.zig");
 // Import types from GBA runtime
 const LoggerInterface = @import("src/gba/debug.zig").LoggerInterface;
 const CharsetFlags = font.CharsetFlags;
@@ -16,6 +17,92 @@ const asm_file_paths = [_][]const u8{
     "src/gba/isr.s",
     "src/gba/math.s",
     "src/gba/mem.s",
+};
+
+const CcObjCopyStep = struct {
+    step: std.Build.Step,
+    input: std.Build.LazyPath,
+    basename: []const u8,
+    output_file: std.Build.GeneratedFile,
+
+    pub fn create(b: *std.Build, input: std.Build.LazyPath, basename: []const u8) *CcObjCopyStep {
+        const objcopy_step = b.allocator.create(CcObjCopyStep) catch @panic("OOM");
+        objcopy_step.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .owner = b,
+                .makeFn = make,
+                .name = b.fmt("objcopy {s}", .{ input.getDisplayName() }),
+            }),
+            .input = input,
+            .basename = basename,
+            .output_file = .{ .step = &objcopy_step.step },
+        };
+        input.addStepDependencies(&objcopy_step.step);
+        return objcopy_step;
+    }
+
+    pub fn getOutput(self: *CcObjCopyStep) std.Build.LazyPath {
+        return .{ .generated = .{ .file = &self.output_file } };
+    }
+
+    fn make(
+        step: *std.Build.Step,
+        make_options: std.Build.Step.MakeOptions,
+    ) !void {
+        const self: *CcObjCopyStep = @fieldParentPtr("step", step);
+        const b = step.owner;
+
+        const node = make_options.progress_node.start(
+            b.fmt("objcopy {s}", .{ self.basename }),
+            1,
+        );
+        defer node.end();
+
+        try step.singleUnchangingWatchInput(self.input);
+
+        var man = b.graph.cache.obtain();
+        defer man.deinit();
+
+        const input_path = self.input.getPath2(b, step);
+        _ = try man.addFile(input_path, null);
+        man.hash.addBytes(self.basename);
+
+        if (try step.cacheHit(&man)) {
+            const digest = man.final();
+            self.output_file.path = try b.cache_root.join(b.allocator, &.{
+                "o", &digest, self.basename,
+            });
+            return;
+        }
+
+        const digest = man.final();
+        const cache_dir_rel = try std.fs.path.join(b.allocator, &.{ "o", &digest });
+        defer b.allocator.free(cache_dir_rel);
+        b.cache_root.handle.makePath(cache_dir_rel) catch |err| {
+            return step.fail("unable to make path {s}: {s}", .{ cache_dir_rel, @errorName(err) });
+        };
+        const output_path = try b.cache_root.join(b.allocator, &.{ cache_dir_rel, self.basename });
+
+        var arena = std.heap.ArenaAllocator.init(b.allocator);
+        defer arena.deinit();
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
+        const io = threaded.io();
+
+        cc_objcopy.writeRawFromElf(
+            arena.allocator(),
+            io,
+            input_path,
+            output_path,
+            .{ .ofmt = .raw },
+        ) catch |err| {
+            return step.fail("objcopy failed: {s}", .{@errorName(err)});
+        };
+
+        self.output_file.path = output_path;
+        try man.writeManifest();
+    }
 };
 
 pub const GbaBuild = struct {
@@ -279,18 +366,15 @@ pub const GbaBuild = struct {
             exe.addAssemblyFile(self.ziggbaPath(asm_path));
         }
         // Generate GBA ROM
-        // Use cc_helper's objcopy (port of Zig 0.14.1) to avoid Zig 0.15.1 padding bug
+        // Use cc_helper's objcopy (port of Zig 0.14.1) directly to avoid Zig 0.15.1 padding bug
         // See: https://github.com/ziglang/zig/issues/24522
-        const objcopy = self.b.dependency("cc_helper", .{
-            .target = self.b.graph.host,
-            .optimize = .ReleaseFast,
-        }).artifact("objcopy");
-
         const gba_file = self.b.fmt("{s}.gba", .{options.name});
-        const run_objcopy = self.b.addRunArtifact(objcopy);
-        run_objcopy.addArgs(&.{ "-O", "binary" });
-        run_objcopy.addFileArg(exe.getEmittedBin());
-        const raw_gba = run_objcopy.addOutputFileArg(self.b.fmt("{s}.bin", .{options.name}));
+        const raw_objcopy = CcObjCopyStep.create(
+            self.b,
+            exe.getEmittedBin(),
+            self.b.fmt("{s}.bin", .{options.name}),
+        );
+        const raw_gba = raw_objcopy.getOutput();
 
         // Strip padding from the binary
         // Search for Nintendo logo + branch instruction pattern at ROM start (more unique than just branch)
@@ -313,7 +397,7 @@ pub const GbaBuild = struct {
             self.b.getInstallStep().dependOn(&install_elf_step.step);
         }
         // Fin
-        return .create(self, exe);
+        return .create(self, exe, gba_module);
     }
 
     /// Add a build step for building font data for `gba.text`, converting
@@ -370,14 +454,17 @@ pub const GbaBuild = struct {
 pub const GbaExecutable = struct {
     b: *GbaBuild,
     step: *std.Build.Step.Compile,
+    /// The GBA library module used by this executable. Use this to share
+    /// the gba import with other modules that need it.
+    gba_module: *std.Build.Module,
 
-    pub fn init(b: *GbaBuild, step: *std.Build.Step.Compile) GbaExecutable {
-        return .{ .b = b, .step = step };
+    pub fn init(b: *GbaBuild, step: *std.Build.Step.Compile, gba_module: *std.Build.Module) GbaExecutable {
+        return .{ .b = b, .step = step, .gba_module = gba_module };
     }
 
-    pub fn create(b: *GbaBuild, step: *std.Build.Step.Compile) *GbaExecutable {
+    pub fn create(b: *GbaBuild, step: *std.Build.Step.Compile, gba_module: *std.Build.Module) *GbaExecutable {
         const exe = b.allocator().create(GbaExecutable) catch @panic("OOM");
-        exe.* = .init(b, step);
+        exe.* = .init(b, step, gba_module);
         return exe;
     }
 

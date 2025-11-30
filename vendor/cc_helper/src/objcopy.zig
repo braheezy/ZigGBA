@@ -266,6 +266,33 @@ fn cmdObjCopy(gpa: Allocator, arena: Allocator, args: []const []const u8) !void 
     return std.process.cleanExit();
 }
 
+/// Convert an ELF file to a raw or hex representation without spawning the CLI.
+/// Intended for build-system use so Zig projects can call into objcopy directly.
+pub fn writeRawFromElf(
+    arena: Allocator,
+    io: std.Io,
+    input: []const u8,
+    output: []const u8,
+    options: EmitRawElfOptions,
+) !void {
+
+    const input_file = try fs.cwd().openFile(input, .{});
+    defer input_file.close();
+
+    const stat = try input_file.stat();
+    const io_file: std.Io.File = .{ .handle = input_file.handle };
+    var in: std.Io.File.Reader = .initSize(io_file, io, &input_buffer, stat.size);
+
+    const elf_hdr = try std.elf.Header.read(&in.interface);
+
+    var output_file = try fs.cwd().createFile(output, .{ .mode = fs.File.default_mode });
+    defer output_file.close();
+    var out = output_file.writer(&output_buffer);
+
+    try emitElf(arena, &in, &out, elf_hdr, options);
+    try out.end();
+}
+
 const usage =
     \\Usage: zig objcopy [options] input output
     \\
