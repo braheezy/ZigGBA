@@ -10,6 +10,8 @@
         "assets",
         "src",
         "build",
+        "gba_build.zig",
+        "vendor/cc_helper/src/objcopy.zig",
         "LICENSE",
         "README.md",
     },
