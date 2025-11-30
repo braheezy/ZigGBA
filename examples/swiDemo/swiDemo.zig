@@ -3,7 +3,6 @@ const bios = gba.bios;
 const ColorRgb555 = gba.ColorRgb555;
 const display = gba.display;
 const math = gba.math;
-
 const std = @import("std");
 
 export const gameHeader linksection(".gbaheader") = gba.Header.init(
@@ -41,25 +40,25 @@ fn sqrtDemo(mode3: gba.display.Mode3Surface) void {
 }
 
 fn affDemo(mode3: gba.display.Mode3Surface) void {
-    // Source parameters for OBJ affine BIOS call (4-byte aligned)
-    var af_src align(4) = [_]bios.ObjAffineSetOptions{.{
-        .scale = .init(math.FixedI16R8.one, math.FixedI16R8.fromInt(80)),
+    // Source parameters for OBJ affine BIOS call
+    var af_options = [_]bios.ObjAffineSetOptions{.{
+        .scale = .init(math.FixedI16R8.fromInt(1), math.FixedI16R8.fromInt(80)),
         .angle = math.FixedU16R16.zero,
     }};
 
     // Destination matrix written by the BIOS (a, b, c, d)
-    var af_dest: math.Affine2x2 = .identity;
+    var af_dest: math.Affine2x2 = math.Affine2x2.identity;
 
     for (0..gba.display.screen_width) |ix| {
-        // Call BIOS ObjAffineSet - pass array as slice
-        bios.objAffineSetStruct(&af_src, @ptrCast(&af_dest));
+        bios.objAffineSet(&af_options, @ptrCast(&af_dest), 2);
+        const cc = (@as(i32, af_dest.a.value) * 80) >> 8;
+        const ss = @as(i32, af_dest.c.value) >> 8;
+        mode3.setPixel(@intCast(ix), @as(u8, @intCast(80 - @as(u16, @intCast(cc)))), ColorRgb555.yellow);
+        mode3.setPixel(@intCast(ix), @as(u8, @intCast(80 - @as(u16, @intCast(ss)))), ColorRgb555.cyan);
 
-        const cc = 80 * af_dest.a.to(i32) >> 8;
-        const ss = af_dest.c.to(i32) >> 8;
-        mode3.setPixel(@intCast(ix), @as(u8, @intCast(80 - @as(i16, @intCast(cc)))), ColorRgb555.yellow);
-        mode3.setPixel(@intCast(ix), @as(u8, @intCast(80 - @as(i16, @intCast(ss)))), ColorRgb555.cyan);
-
-        af_src[0].angle.value +%= 0x0111;
+        // Increment angle - FixedU16R16 uses 16 fractional bits vs FixedU16R8's 8 bits
+        // So 0x0111 << 8 = 0x11100
+        af_options[0].angle = af_options[0].angle.add(math.FixedU16R16.initRaw(0x0111));
     }
 
     mode3.draw().text("cos", .init(ColorRgb555.yellow), .{
@@ -71,8 +70,6 @@ fn affDemo(mode3: gba.display.Mode3Surface) void {
         .y = 20,
     });
 }
-
-const I2_14 = math.FixedPoint(.signed, 2, 14);
 
 fn arctan2Demo(mode3: gba.display.Mode3Surface) void {
     const ww = gba.display.screen_width / 2;
