@@ -4,8 +4,25 @@
 //! tool for examples and debugging, prioritizing general applicability and
 //! ease of use over performance.
 
+const std = @import("std");
 const gba = @import("gba.zig");
-const assert = @import("std").debug.assert;
+const root_module = @import("root");
+const build_options = blk: {
+    if (@hasDecl(root_module, "ziggba_build_options")) {
+        break :blk @import("ziggba_build_options");
+    }
+    break :blk struct {
+        pub const text_print_stack_size: usize = 512;
+    };
+};
+const print_stack_size_default: usize = build_options.text_print_stack_size;
+
+comptime {
+    if (print_stack_size_default == 0) {
+        @compileError("ziggba text print stack size must be positive");
+    }
+}
+const assert = std.debug.assert;
 
 // Imports related to supported character sets.
 pub const charset_latin = @import("text_charsets.zig").charset_latin;
@@ -446,4 +463,25 @@ pub fn drawTextGetBounds(
     );
     drawTextLayout(SurfaceT, PixelT, surface, style_options, &layout);
     return layout.getBoundsRect();
+}
+
+/// Print formatted text using the same rasterization path as `drawText`.
+/// The format string is written into a stack-backed buffer before rendering.
+pub fn print(
+    comptime fmt: []const u8,
+    args: anytype,
+    comptime DrawT: type,
+    draw: DrawT,
+    style_options: TextStyleOptions(@field(DrawT, "Pixel")),
+    layout_options: TextLayout.Options,
+) void {
+    const buffer_size = print_stack_size_default;
+    comptime {
+        if (buffer_size == 0) {
+            @compileError("returning text print buffer must be larger than 0");
+        }
+    }
+    var buffer: [buffer_size]u8 = undefined;
+    const result = std.fmt.bufPrint(buffer[0..], fmt, args) catch unreachable;
+    draw.text(result, style_options, layout_options);
 }

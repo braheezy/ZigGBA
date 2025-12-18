@@ -107,6 +107,24 @@ pub fn SurfaceDraw(
             );
         }
 
+        /// Print formatted text using the same path as `text`.
+        pub fn print(
+            self: Self,
+            comptime fmt: []const u8,
+            args: anytype,
+            style_options: gba.text.TextStyleOptions(Pixel),
+            layout_options: gba.text.TextLayout.Options,
+        ) void {
+            gba.text.print(
+                fmt,
+                args,
+                @TypeOf(self),
+                self,
+                style_options,
+                layout_options,
+            );
+        }
+
         /// Draw a single pixel in the bitmap.
         pub fn pixel(self: Self, x: u32, y: u32, px: Pixel) void {
             self.surface.setPixel(x, y, px);

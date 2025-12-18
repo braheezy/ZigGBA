@@ -122,6 +122,9 @@ pub const GbaBuild = struct {
         /// will embed font data for a certain subset of Unicode code points
         /// into the compiled ROM.
         text_charsets: CharsetFlags = .{},
+        /// Stack buffer size used by `gba.text.print`.
+        /// Can be adjusted via `-Dtext_print_stack_size`.
+        text_print_stack_size: usize = 512,
     };
 
     /// `std.Target.Query` object for GBA thumb compilation target.
@@ -233,6 +236,7 @@ pub const GbaBuild = struct {
         const b_options = b.addOptions();
         b_options.addOption(LoggerInterface, "default_logger", build_options.default_logger);
         b_options.addOption(CharsetFlags, "text_charsets", build_options.text_charsets);
+        b_options.addOption(usize, "text_print_stack_size", build_options.text_print_stack_size);
         return b_options;
     }
 
