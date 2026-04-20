@@ -79,9 +79,9 @@ pub fn convertSaveImageTiles4BppPath(
         options,
     );
     defer allocator.free(tiles);
-    var file = try std.fs.cwd().createFile(output_path, .{});
-    defer file.close();
-    try file.writeAll(std.mem.sliceAsBytes(tiles));
+    var file = try std.Io.Dir.cwd().createFile(io, output_path, .{});
+    defer file.close(io);
+    try file.writeStreamingAll(io, std.mem.sliceAsBytes(tiles));
 }
 
 fn validateImageTileCount(
@@ -172,9 +172,9 @@ pub fn convertSaveImageTiles8BppPath(
 ) !void {
     const tiles = try convertImageTiles8BppPath(allocator, io, image_path, options);
     defer allocator.free(tiles);
-    var file = try std.fs.cwd().createFile(output_path, .{});
-    defer file.close();
-    try file.writeAll(std.mem.sliceAsBytes(tiles));
+    var file = try std.Io.Dir.cwd().createFile(io, output_path, .{});
+    defer file.close(io);
+    try file.writeStreamingAll(io, std.mem.sliceAsBytes(tiles));
 }
 
 /// Convert an arbitrary image to uncompressed tile data which may be
@@ -233,7 +233,6 @@ pub const ConvertImageTiles4BppStep = struct {
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageTiles4BppOptions,
-    io: std.Io,
 
     pub fn create(b: *std.Build, options: Options) *ConvertImageTiles4BppStep {
         const step_name = options.name orelse b.fmt(
@@ -241,9 +240,6 @@ pub const ConvertImageTiles4BppStep = struct {
             .{ options.image_path, options.output_path },
         );
         const convert_step = (b.allocator.create(ConvertImageTiles4BppStep) catch @panic("OOM"));
-        var threaded: std.Io.Threaded = .init_single_threaded;
-        defer threaded.deinit();
-        const io = threaded.io();
         convert_step.* = .{
             .image_path = options.image_path,
             .output_path = options.output_path,
@@ -254,7 +250,6 @@ pub const ConvertImageTiles4BppStep = struct {
                 .makeFn = make,
                 .name = step_name,
             }),
-            .io = io,
         };
         return convert_step;
     }
@@ -271,9 +266,11 @@ pub const ConvertImageTiles4BppStep = struct {
         var node = make_options.progress_node.start(node_name, 1);
         defer node.end();
 
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
         try convertSaveImageTiles4BppPath(
             step.owner.allocator,
-            self.io,
+            threaded.io(),
             self.image_path,
             self.output_path,
             self.options,
@@ -294,16 +291,12 @@ pub const ConvertImageTiles8BppStep = struct {
     image_path: []const u8,
     output_path: []const u8,
     options: ConvertImageTiles8BppOptions,
-    io: std.Io,
 
     pub fn create(b: *std.Build, options: Options) *ConvertImageTiles8BppStep {
         const step_name = options.name orelse b.fmt(
             "ConvertImageTiles8BppStep {s} -> {s}",
             .{ options.image_path, options.output_path },
         );
-        var threaded: std.Io.Threaded = .init_single_threaded;
-        defer threaded.deinit();
-        const io = threaded.io();
         const convert_step = (b.allocator.create(ConvertImageTiles8BppStep) catch @panic("OOM"));
         convert_step.* = .{
             .image_path = options.image_path,
@@ -315,7 +308,6 @@ pub const ConvertImageTiles8BppStep = struct {
                 .makeFn = make,
                 .name = step_name,
             }),
-            .io = io,
         };
         return convert_step;
     }
@@ -332,9 +324,11 @@ pub const ConvertImageTiles8BppStep = struct {
         var node = make_options.progress_node.start(node_name, 1);
         defer node.end();
 
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
         try convertSaveImageTiles8BppPath(
             step.owner.allocator,
-            self.io,
+            threaded.io(),
             self.image_path,
             self.output_path,
             self.options,

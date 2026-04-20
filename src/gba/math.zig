@@ -106,17 +106,13 @@ pub fn isUnsignedIntPrimitiveType(comptime T: type) bool {
 /// Get the signed int primitive type with a given number of bits.
 /// For example, pass a `bits` value of 32 to get `i32`.
 pub fn getSignedIntPrimitiveType(comptime bits: comptime_int) type {
-    return @Type(.{
-        .int = .{ .signedness = .signed, .bits = bits },
-    });
+    return @Int(.signed, bits);
 }
 
 /// Get the unsigned int primitive type with a given number of bits.
 /// For example, pass a `bits` value of 32 to get `u32`.
 pub fn getUnsignedIntPrimitiveType(comptime bits: comptime_int) type {
-    return @Type(.{
-        .int = .{ .signedness = .signed, .bits = bits },
-    });
+    return @Int(.signed, bits);
 }
 
 /// Represents the product returned by `unsignedMulLong`.

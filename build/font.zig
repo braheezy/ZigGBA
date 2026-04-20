@@ -187,9 +187,9 @@ pub fn buildSaveFontPath(
         image_rect,
     );
     defer allocator.free(font_data);
-    var file = try std.fs.cwd().createFile(output_path, .{});
-    defer file.close();
-    try file.writeAll(font_data);
+    var file = try std.Io.Dir.cwd().createFile(io, output_path, .{});
+    defer file.close(io);
+    try file.writeStreamingAll(io, font_data);
 }
 
 /// This function converts monochrome image data (e.g. in PNG format)

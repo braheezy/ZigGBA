@@ -2,7 +2,7 @@
     .name = .ziggba,
     .version = "0.0.0",
     .fingerprint = 0x94ed0cc5e826ab7, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.16.0-dev.1262+be4eaed7c",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",
@@ -11,7 +11,6 @@
         "src",
         "build",
         "gba_build.zig",
-        "vendor/cc_helper/src/objcopy.zig",
         "LICENSE",
         "README.md",
     },

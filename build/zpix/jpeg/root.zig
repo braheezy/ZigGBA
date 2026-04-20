@@ -21,10 +21,10 @@ pub fn probeBuffer(buffer: []const u8) bool {
 
 /// Probe whether the file at `path` looks like a JPEG file.
 pub fn probePath(io: std.Io, path: []const u8) !bool {
-    const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+    const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
         return err;
     };
-    defer file.close();
+    defer file.close(io);
     var buf: [2]u8 = undefined;
     var io_buf: [32]u8 = undefined;
     var file_reader = file.reader(io, &io_buf);
@@ -34,11 +34,11 @@ pub fn probePath(io: std.Io, path: []const u8) !bool {
 }
 
 pub fn load(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !image.Image {
-    const jpeg_file = std.fs.cwd().openFile(path, .{}) catch |err| {
+    const jpeg_file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
         std.log.err("Failed to open jpeg file {s}: {any}", .{ path, err });
         return err;
     };
-    defer jpeg_file.close();
+    defer jpeg_file.close(io);
 
     var read_buffer: [4096]u8 = undefined;
     var file_reader = jpeg_file.reader(io, &read_buffer);

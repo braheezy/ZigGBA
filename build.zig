@@ -102,7 +102,7 @@ fn buildExamples(b: *GbaBuild) void {
 
     var bgAffine = b.addExecutable(.{
         .name = "bgAffine",
-        .root_source_file = b.path("bgAffine.zig"),
+        .root_source_file = b.path("examples/bgAffine/bgAffine.zig"),
         .build_options = .{ .text_charsets = .all },
     });
     const bgAffine_pal = color.PalettizerNearest.create(
@@ -116,8 +116,8 @@ fn buildExamples(b: *GbaBuild) void {
         },
     ) catch @panic("OOM");
     _ = bgAffine.addConvertImageTiles8BppStep(.{
-        .image_path = "tiles.png",
-        .output_path = "tiles.bin",
+        .image_path = "examples/bgAffine/tiles.png",
+        .output_path = "examples/bgAffine/tiles.bin",
         .options = .{ .palettizer = bgAffine_pal.pal() },
     });
 

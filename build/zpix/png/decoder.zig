@@ -389,7 +389,7 @@ fn parseIhdr(self: *Decoder, length: u32) !void {
 // Process all consecutive IDAT chunks and decode the image
 fn parseIdat(self: *Decoder, first_chunk_length: u32) !void {
     // Collect all IDAT chunks
-    var all_data = std.ArrayListUnmanaged(u8){};
+    var all_data: std.ArrayListUnmanaged(u8) = .empty;
     defer all_data.deinit(self.allocator);
 
     // Read the first IDAT chunk data and add it to our buffer

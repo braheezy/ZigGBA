@@ -6,11 +6,11 @@ pub const Decoder = @import("decoder.zig");
 pub const decode = Decoder.decode;
 
 pub fn load(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !image.Image {
-    const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+    const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
         std.log.err("Failed to open bmp file {s}: {any}", .{ path, err });
         return err;
     };
-    defer file.close();
+    defer file.close(io);
 
     var read_buffer: [4096]u8 = undefined;
     var file_reader = file.reader(io, &read_buffer);
@@ -32,10 +32,10 @@ pub fn probeBuffer(buffer: []const u8) bool {
 
 /// Probe whether the file at `path` looks like a BMP file.
 pub fn probePath(io: std.Io, path: []const u8) !bool {
-    const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+    const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
         return err;
     };
-    defer file.close();
+    defer file.close(io);
     var buf: [2]u8 = undefined;
     var io_buf: [32]u8 = undefined;
     var file_reader = file.reader(io, &io_buf);

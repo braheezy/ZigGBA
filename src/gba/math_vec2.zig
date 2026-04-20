@@ -83,7 +83,8 @@ pub fn Vec2I(comptime T: type) type {
     const T_zero = gba.math.zero(T);
     const T_one = gba.math.one(T);
     const T_negative_one = gba.math.negativeOne(T);
-    return packed struct {
+    const BackingT = gba.math.getSignedIntPrimitiveType(2 * @bitSizeOf(T));
+    return packed struct(BackingT) {
         const Self = @This();
 
         pub const ComponentT: type = T;

@@ -4,12 +4,13 @@ const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
 
 /// Save palette data as a binary file at a given file path.
 pub fn savePalette(
+    io: std.Io,
     palette: []const ColorRgb555,
     output_path: []const u8,
 ) !void {
-    var file = try std.fs.cwd().createFile(output_path, .{});
-    defer file.close();
-    try file.writeAll(std.mem.sliceAsBytes(palette));
+    var file = try std.Io.Dir.cwd().createFile(io, output_path, .{});
+    defer file.close(io);
+    try file.writeStreamingAll(io, std.mem.sliceAsBytes(palette));
 }
 
 /// Save a palette as a build step.

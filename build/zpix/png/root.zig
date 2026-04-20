@@ -11,11 +11,11 @@ pub const sng = @import("sng.zig").sng;
 const png_signature = "\x89PNG\r\n\x1a\n";
 
 pub fn load(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !image.Image {
-    const png_file = std.fs.cwd().openFile(path, .{}) catch |err| {
+    const png_file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
         std.log.err("Failed to open png file {s}: {any}", .{ path, err });
         return err;
     };
-    defer png_file.close();
+    defer png_file.close(io);
 
     var read_buffer: [4096]u8 = undefined;
     var file_reader = png_file.reader(io, &read_buffer);
@@ -40,10 +40,10 @@ pub fn probeBuffer(buffer: []const u8) bool {
 
 /// Probe whether the file at `path` looks like a PNG file.
 pub fn probePath(io: std.Io, path: []const u8) !bool {
-    const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+    const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
         return err;
     };
-    defer file.close();
+    defer file.close(io);
     var io_buf: [64]u8 = undefined;
     var file_reader = file.reader(io, &io_buf);
     const reader: *std.Io.Reader = &file_reader.interface;

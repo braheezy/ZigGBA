@@ -269,6 +269,6 @@ pub const SaveQuantizedPalettizerPaletteStep = struct {
         const default_quantizer = ColorQuantizerLinear.init();
         const quantizer = (self.quantizer orelse default_quantizer.quantizer());
         quantizer.quantizeSlice(palette_colors, quantized_colors, .{});
-        try savePalette(quantized_colors, self.output_path);
+        try savePalette(step.owner.graph.io, quantized_colors, self.output_path);
     }
 };

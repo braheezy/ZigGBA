@@ -18,7 +18,7 @@ const QOI_PIXELS_MAX = 400_000_000;
 
 /// Decode a QOI image from a reader.
 pub fn decode(allocator: std.mem.Allocator, r: *std.Io.Reader) !image.Image {
-    var buf_list = std.ArrayListUnmanaged(u8){};
+    var buf_list: std.ArrayListUnmanaged(u8) = .empty;
     defer buf_list.deinit(allocator);
     const max_bytes = comptime @as(usize, QOI_HEADER_SIZE + QOI_PADDING_SIZE + QOI_PIXELS_MAX * 4);
     try r.appendRemaining(allocator, &buf_list, @enumFromInt(max_bytes));
