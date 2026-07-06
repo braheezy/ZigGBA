@@ -136,12 +136,12 @@ pub fn convertImageBitmap8Bpp(
         return ConvertImageBitmap8BppError.InvalidRect;
     }
     // Encode image data
-    var data = try allocator.alloc(u8, rect.width * rect.height);
+    var data = try allocator.alloc(u8, @as(usize, rect.width) * @as(usize, rect.height));
     for (0..rect.height) |pixel_y| {
         for (0..rect.width) |pixel_x| {
             const image_x: u16 = @intCast(pixel_x + rect.x);
             const image_y: u16 = @intCast(pixel_y + rect.y);
-            const i = pixel_x + (pixel_y * rect.width);
+            const i = pixel_x + (pixel_y * @as(usize, rect.width));
             data[i] = options.palettizer.get(.{
                 .color = image.getPixelColor(image_x, image_y),
                 .x = image_x,

@@ -336,6 +336,13 @@ pub const GbaBuild = struct {
         return image.ConvertImageTiles8BppStep.create(self.b, options);
     }
 
+    pub fn addConvertImageTilemap4BppStep(
+        self: GbaBuild,
+        options: image.ConvertImageTilemap4BppStep.Options,
+    ) *image.ConvertImageTilemap4BppStep {
+        return image.ConvertImageTilemap4BppStep.create(self.b, options);
+    }
+
     pub fn addConvertImageBitmap8BppStep(
         self: GbaBuild,
         options: image.ConvertImageBitmap8BppStep.Options,
@@ -418,6 +425,19 @@ pub const GbaExecutable = struct {
         options: image.ConvertImageTiles8BppStep.Options,
     ) *image.ConvertImageTiles8BppStep {
         const step = image.ConvertImageTiles8BppStep.create(
+            self.getOwner(),
+            options,
+        );
+        self.dependOn(&step.step);
+        return step;
+    }
+
+    /// Add a step that the executable depends on.
+    pub fn addConvertImageTilemap4BppStep(
+        self: *GbaExecutable,
+        options: image.ConvertImageTilemap4BppStep.Options,
+    ) *image.ConvertImageTilemap4BppStep {
+        const step = image.ConvertImageTilemap4BppStep.create(
             self.getOwner(),
             options,
         );

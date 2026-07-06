@@ -33,6 +33,14 @@ pub const convertImageTiles8Bpp = @import("image_tiles.zig").convertImageTiles8B
 pub const ConvertImageTiles4BppStep = @import("image_tiles.zig").ConvertImageTiles4BppStep;
 pub const ConvertImageTiles8BppStep = @import("image_tiles.zig").ConvertImageTiles8BppStep;
 
+pub const ConvertImageTilemap4BppOptions = @import("image_tilemap.zig").ConvertImageTilemap4BppOptions;
+pub const ConvertImageTilemap4BppOutput = @import("image_tilemap.zig").ConvertImageTilemap4BppOutput;
+pub const ConvertImageTilemap4BppError = @import("image_tilemap.zig").ConvertImageTilemap4BppError;
+pub const convertImageTilemap4BppPath = @import("image_tilemap.zig").convertImageTilemap4BppPath;
+pub const convertSaveImageTilemap4BppPath = @import("image_tilemap.zig").convertSaveImageTilemap4BppPath;
+pub const convertImageTilemap4Bpp = @import("image_tilemap.zig").convertImageTilemap4Bpp;
+pub const ConvertImageTilemap4BppStep = @import("image_tilemap.zig").ConvertImageTilemap4BppStep;
+
 /// Provides an interface for loading and reading image data.
 pub const Image = struct {
     data: zpix.image.Image,
@@ -92,7 +100,7 @@ pub const Image = struct {
     pub fn getPixelColor(self: Image, x: u16, y: u16) ColorRgba32 {
         assert(x < self.getWidth());
         assert(y < self.getHeight());
-        const i = x + (y * self.getWidth());
+        const i = @as(usize, x) + (@as(usize, y) * @as(usize, self.getWidth()));
         return getImagePixelRgba32(self.data, i);
     }
 };
