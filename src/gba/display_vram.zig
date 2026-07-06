@@ -678,6 +678,12 @@ pub const BackgroundBlocks = BlocksType(4, 32);
 
 pub const ObjectBlocks = BlocksType(2, 0);
 
+/// Number of 16-color object tiles that fit in object charblock VRAM.
+///
+/// Object tile indices in OAM are expressed in 16-color tile units. A
+/// 256-color tile consumes two of these slots.
+pub const object_tile_count_4bpp = 0x400;
+
 /// Represents all charblocks and screenblocks in VRAM, both background
 /// and object/sprite data combined.
 pub const blocks: *align(@sizeOf(Charblock)) volatile CombinedBlocks = (@ptrCast(gba.mem.vram));
@@ -700,6 +706,114 @@ pub const obj_blocks: *align(@sizeOf(Charblock)) volatile ObjectBlocks = (@ptrCa
 
 /// Represents the two charblocks in VRAM usable with objects/sprites.
 pub const obj_charblocks: *align(@sizeOf(Charblock)) volatile [4]Charblock = (@ptrCast(&charblocks[4]));
+
+/// Describes an owned range of object/sprite tile memory.
+///
+/// This type is useful for projects that divide object VRAM into fixed regions
+/// for different sprite systems. Ranges are expressed in 16-color tile units,
+/// matching the `gba.display.Object.base_tile` field. A 256-color object tile
+/// consumes two slots.
+pub const ObjectTileRange = struct {
+    /// Human-readable name used in compile errors.
+    name: []const u8,
+    /// First 16-color object tile slot owned by this range.
+    start: u10,
+    /// Number of 16-color object tile slots owned by this range.
+    count: u16,
+
+    /// Initialize an object tile range.
+    ///
+    /// `start` and `count` are measured in 16-color object tile slots.
+    /// If the range extends past object VRAM, a compile error is emitted.
+    pub fn init(
+        comptime name: []const u8,
+        comptime start: u16,
+        comptime count: u16,
+    ) ObjectTileRange {
+        if (start >= object_tile_count_4bpp) {
+            @compileError(name ++ " object tile range starts past object VRAM");
+        }
+        if (@as(u32, start) + @as(u32, count) > object_tile_count_4bpp) {
+            @compileError(name ++ " object tile range exceeds object VRAM");
+        }
+        return .{
+            .name = name,
+            .start = @intCast(start),
+            .count = count,
+        };
+    }
+
+    /// Return the tile index immediately after this range.
+    pub fn end(self: ObjectTileRange) u16 {
+        return @as(u16, self.start) + self.count;
+    }
+
+    /// Return the first tile index in this range.
+    ///
+    /// This is suitable for `gba.display.Object.base_tile`.
+    pub fn baseTile(self: ObjectTileRange) u10 {
+        return self.start;
+    }
+
+    /// Return a tile index at an offset within this range.
+    ///
+    /// Runtime safety checks ensure that `offset` is inside this range.
+    pub fn tile(self: ObjectTileRange, offset: u16) u10 {
+        assert(offset < self.count);
+        return @intCast(@as(u16, self.start) + offset);
+    }
+
+    /// Return whether a subrange is fully contained within this range.
+    pub fn contains(self: ObjectTileRange, offset: u16, count: u16) bool {
+        return offset <= self.count and count <= self.count - offset;
+    }
+
+    /// Return whether this range overlaps another object tile range.
+    pub fn overlaps(self: ObjectTileRange, other: ObjectTileRange) bool {
+        return @as(u16, self.start) < other.end() and @as(u16, other.start) < self.end();
+    }
+
+    /// Copy 16-color tile data into this object tile range.
+    ///
+    /// Runtime safety checks ensure that the data fits within this range.
+    pub fn upload4Bpp(
+        self: ObjectTileRange,
+        data: []align(2) const Tile4Bpp,
+    ) void {
+        self.upload4BppAt(0, data);
+    }
+
+    /// Copy 16-color tile data into this object tile range at an offset.
+    ///
+    /// `offset` is measured in 16-color object tile slots.
+    /// Runtime safety checks ensure that the data fits within this range.
+    pub fn upload4BppAt(
+        self: ObjectTileRange,
+        offset: u16,
+        data: []align(2) const Tile4Bpp,
+    ) void {
+        assert(self.contains(offset, @intCast(data.len)));
+        memcpyObjectTiles4Bpp(self.tile(offset), data);
+    }
+};
+
+/// Emit a compile error if any object tile ranges in a group overlap.
+///
+/// This is intended for projects that keep several fixed object tile layouts
+/// for different scenes or screens. Pass the ranges that can be alive at the
+/// same time.
+pub fn checkNoObjectTileOverlap(
+    comptime group_name: []const u8,
+    comptime ranges: []const ObjectTileRange,
+) void {
+    for (ranges, 0..) |left, left_index| {
+        for (ranges[left_index + 1 ..]) |right| {
+            if (left.overlaps(right)) {
+                @compileError(group_name ++ " object tile overlap: " ++ left.name ++ " overlaps " ++ right.name);
+            }
+        }
+    }
+}
 
 /// Enumeration of bits per pixel values for tiles.
 ///
