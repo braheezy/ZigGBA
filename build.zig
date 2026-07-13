@@ -223,8 +223,16 @@ pub fn build(std_b: *std.Build) void {
             .optimize = optimize,
         }),
     }));
+    const test_display_vram = std_b.addRunArtifact(std_b.addTest(.{
+        .root_module = std_b.createModule(.{
+            .root_source_file = std_b.path("src/gba/display_vram.zig"),
+            .target = host_target,
+            .optimize = optimize,
+        }),
+    }));
 
     const test_step = std_b.step("test", "Run unit tests");
     test_step.dependOn(&test_math.step);
     test_step.dependOn(&test_format.step);
+    test_step.dependOn(&test_display_vram.step);
 }
