@@ -1,7 +1,8 @@
 //! This module contains definitions related to tiles and charbanks.
 
 const gba = @import("gba.zig");
-const assert = @import("std").debug.assert;
+const std = @import("std");
+const assert = std.debug.assert;
 
 /// Holds data for 32x32 non-affine background tiles, or up to 2048 affine
 /// tiles.
@@ -678,6 +679,12 @@ pub const BackgroundBlocks = BlocksType(4, 32);
 
 pub const ObjectBlocks = BlocksType(2, 0);
 
+/// Number of 16-color object tiles that fit in object charblock VRAM.
+///
+/// Object tile indices in OAM are expressed in 16-color tile units. A
+/// 256-color tile consumes two of these slots.
+pub const object_tile_count_4bpp = 0x400;
+
 /// Represents all charblocks and screenblocks in VRAM, both background
 /// and object/sprite data combined.
 pub const blocks: *align(@sizeOf(Charblock)) volatile CombinedBlocks = (@ptrCast(gba.mem.vram));
@@ -700,6 +707,253 @@ pub const obj_blocks: *align(@sizeOf(Charblock)) volatile ObjectBlocks = (@ptrCa
 
 /// Represents the two charblocks in VRAM usable with objects/sprites.
 pub const obj_charblocks: *align(@sizeOf(Charblock)) volatile [4]Charblock = (@ptrCast(&charblocks[4]));
+
+/// Describes an owned range of object/sprite tile memory.
+///
+/// This type is useful for projects that divide object VRAM into fixed regions
+/// for different sprite systems. Ranges are expressed in 16-color tile units,
+/// matching the `gba.display.Object.base_tile` field. A 256-color object tile
+/// consumes two slots.
+pub const ObjectTileRange = struct {
+    /// Human-readable name used in compile errors.
+    name: []const u8,
+    /// First 16-color object tile slot owned by this range.
+    start: u10,
+    /// Number of 16-color object tile slots owned by this range.
+    count: u16,
+
+    /// Initialize an object tile range.
+    ///
+    /// `start` and `count` are measured in 16-color object tile slots.
+    /// If the range extends past object VRAM, a compile error is emitted.
+    pub fn init(
+        comptime name: []const u8,
+        comptime start: u16,
+        comptime count: u16,
+    ) ObjectTileRange {
+        if (start >= object_tile_count_4bpp) {
+            @compileError(name ++ " object tile range starts past object VRAM");
+        }
+        if (@as(u32, start) + @as(u32, count) > object_tile_count_4bpp) {
+            @compileError(name ++ " object tile range exceeds object VRAM");
+        }
+        return .{
+            .name = name,
+            .start = @intCast(start),
+            .count = count,
+        };
+    }
+
+    /// Return the tile index immediately after this range.
+    pub fn end(self: ObjectTileRange) u16 {
+        return @as(u16, self.start) + self.count;
+    }
+
+    /// Return the first tile index in this range.
+    ///
+    /// This is suitable for `gba.display.Object.base_tile`.
+    pub fn baseTile(self: ObjectTileRange) u10 {
+        return self.start;
+    }
+
+    /// Return a tile index at an offset within this range.
+    ///
+    /// Runtime safety checks ensure that `offset` is inside this range.
+    pub fn tile(self: ObjectTileRange, offset: u16) u10 {
+        assert(offset < self.count);
+        return @intCast(@as(u16, self.start) + offset);
+    }
+
+    /// Return whether a subrange is fully contained within this range.
+    pub fn contains(self: ObjectTileRange, offset: u16, count: u16) bool {
+        return offset <= self.count and count <= self.count - offset;
+    }
+
+    /// Return whether this range overlaps another object tile range.
+    pub fn overlaps(self: ObjectTileRange, other: ObjectTileRange) bool {
+        return @as(u16, self.start) < other.end() and @as(u16, other.start) < self.end();
+    }
+
+    /// Copy 16-color tile data into this object tile range.
+    ///
+    /// Runtime safety checks ensure that the data fits within this range.
+    pub fn upload4Bpp(
+        self: ObjectTileRange,
+        data: []align(2) const Tile4Bpp,
+    ) void {
+        self.upload4BppAt(0, data);
+    }
+
+    /// Copy 16-color tile data into this object tile range at an offset.
+    ///
+    /// `offset` is measured in 16-color object tile slots.
+    /// Runtime safety checks ensure that the data fits within this range.
+    pub fn upload4BppAt(
+        self: ObjectTileRange,
+        offset: u16,
+        data: []align(2) const Tile4Bpp,
+    ) void {
+        assert(self.contains(offset, @intCast(data.len)));
+        memcpyObjectTiles4Bpp(self.tile(offset), data);
+    }
+};
+
+/// Cached 4bpp frame uploads into one logical object-tile slot.
+///
+/// Keep one cache per independently-written destination subrange. The range,
+/// offset, source data, and `tiles_per_frame` arguments must remain stable
+/// while the cache is valid. Call `invalidate` whenever another system may
+/// have overwritten that object VRAM. Frame index `0xffff` is reserved as the
+/// invalid state so each cache occupies only two bytes.
+///
+/// Example:
+///
+/// ```zig
+/// var cache: ObjectTileFrameCache4Bpp = .{};
+/// cache.upload4Bpp(player_tiles, &player_tile_data, frame, 16);
+/// ```
+pub const ObjectTileFrameCache4Bpp = struct {
+    const invalid_frame = std.math.maxInt(u16);
+
+    loaded_frame: u16 = invalid_frame,
+
+    /// Forget which frame is currently represented by the destination slot.
+    pub fn invalidate(self: *ObjectTileFrameCache4Bpp) void {
+        self.loaded_frame = invalid_frame;
+    }
+
+    /// Upload a packed frame at the start of an object tile range unless it is
+    /// already loaded.
+    pub fn upload4Bpp(
+        self: *ObjectTileFrameCache4Bpp,
+        range: ObjectTileRange,
+        tile_data: []align(2) const u8,
+        frame: u16,
+        tiles_per_frame: usize,
+    ) void {
+        self.upload4BppAt(range, 0, tile_data, frame, tiles_per_frame);
+    }
+
+    /// Upload a packed frame at an offset within an object tile range unless
+    /// it is already loaded. `offset` is measured in 4bpp tile slots.
+    pub fn upload4BppAt(
+        self: *ObjectTileFrameCache4Bpp,
+        range: ObjectTileRange,
+        offset: u16,
+        tile_data: []align(2) const u8,
+        frame: u16,
+        tiles_per_frame: usize,
+    ) void {
+        assert(frame != invalid_frame);
+        if (self.has(frame)) return;
+        range.upload4BppAt(offset, frameTiles4Bpp(tile_data, frame, tiles_per_frame));
+        self.record(frame);
+    }
+
+    fn has(self: ObjectTileFrameCache4Bpp, frame: u16) bool {
+        return frame != invalid_frame and self.loaded_frame == frame;
+    }
+
+    fn record(self: *ObjectTileFrameCache4Bpp, frame: u16) void {
+        assert(frame != invalid_frame);
+        self.loaded_frame = frame;
+    }
+};
+
+/// Cached 4bpp frame uploads for variants that share one logical object-tile
+/// slot.
+///
+/// The caller supplies a distinct `variant` for each alternative source sheet
+/// or frame layout. As with `ObjectTileFrameCache4Bpp`, all other upload
+/// arguments must remain stable while the cache is valid, and out-of-band
+/// writes require `invalidate`. Frame index `0xffff` is reserved as the invalid
+/// state so each cache occupies only four bytes.
+pub const ObjectTileVariantFrameCache4Bpp = struct {
+    const invalid_frame = std.math.maxInt(u16);
+
+    loaded_frame: u16 = invalid_frame,
+    loaded_variant: u16 = 0,
+
+    /// Forget which variant and frame currently occupy the destination slot.
+    pub fn invalidate(self: *ObjectTileVariantFrameCache4Bpp) void {
+        self.loaded_frame = invalid_frame;
+    }
+
+    /// Upload a packed variant frame at the start of an object tile range
+    /// unless it is already loaded.
+    pub fn upload4Bpp(
+        self: *ObjectTileVariantFrameCache4Bpp,
+        range: ObjectTileRange,
+        variant: u16,
+        tile_data: []align(2) const u8,
+        frame: u16,
+        tiles_per_frame: usize,
+    ) void {
+        self.upload4BppAt(range, 0, variant, tile_data, frame, tiles_per_frame);
+    }
+
+    /// Upload a packed variant frame at an offset within an object tile range
+    /// unless it is already loaded. `offset` is measured in 4bpp tile slots.
+    pub fn upload4BppAt(
+        self: *ObjectTileVariantFrameCache4Bpp,
+        range: ObjectTileRange,
+        offset: u16,
+        variant: u16,
+        tile_data: []align(2) const u8,
+        frame: u16,
+        tiles_per_frame: usize,
+    ) void {
+        assert(frame != invalid_frame);
+        if (self.has(variant, frame)) return;
+        range.upload4BppAt(offset, frameTiles4Bpp(tile_data, frame, tiles_per_frame));
+        self.record(variant, frame);
+    }
+
+    fn has(self: ObjectTileVariantFrameCache4Bpp, variant: u16, frame: u16) bool {
+        return frame != invalid_frame and self.loaded_frame == frame and self.loaded_variant == variant;
+    }
+
+    fn record(self: *ObjectTileVariantFrameCache4Bpp, variant: u16, frame: u16) void {
+        assert(frame != invalid_frame);
+        self.loaded_frame = frame;
+        self.loaded_variant = variant;
+    }
+};
+
+/// Return one frame from packed 4bpp tile data.
+///
+/// Frames must be tightly packed and contain `tiles_per_frame` tiles each.
+/// Runtime safety checks ensure the selected frame is present in `tile_data`.
+pub fn frameTiles4Bpp(
+    tile_data: []align(2) const u8,
+    frame: u16,
+    tiles_per_frame: usize,
+) []align(2) const Tile4Bpp {
+    assert(tiles_per_frame > 0);
+    const bytes_per_tile = @sizeOf(Tile4Bpp);
+    const byte_offset = @as(usize, frame) * tiles_per_frame * bytes_per_tile;
+    const byte_len = tiles_per_frame * bytes_per_tile;
+    const frame_bytes = tile_data[byte_offset .. byte_offset + byte_len];
+    return @ptrCast(@alignCast(frame_bytes));
+}
+
+/// Emit a compile error if any object tile ranges in a group overlap.
+///
+/// This is intended for projects that keep several fixed object tile layouts
+/// for different scenes or screens. Pass the ranges that can be alive at the
+/// same time.
+pub fn checkNoObjectTileOverlap(
+    comptime group_name: []const u8,
+    comptime ranges: []const ObjectTileRange,
+) void {
+    for (ranges, 0..) |left, left_index| {
+        for (ranges[left_index + 1 ..]) |right| {
+            if (left.overlaps(right)) {
+                @compileError(group_name ++ " object tile overlap: " ++ left.name ++ " overlaps " ++ right.name);
+            }
+        }
+    }
+}
 
 /// Enumeration of bits per pixel values for tiles.
 ///
@@ -971,4 +1225,48 @@ pub fn memcpyObjectTiles8Bpp(
 ) void {
     assert(tile_offset + data.len <= 0x200); // 2 banks * 0x100 tiles/bank
     memcpyTiles8Bpp(4, tile_offset, data);
+}
+
+test "frameTiles4Bpp selects packed frames" {
+    const testing = @import("std").testing;
+    const tiles_per_frame = 2;
+    var bytes: [3 * tiles_per_frame * @sizeOf(Tile4Bpp)]u8 align(4) = undefined;
+    for (&bytes, 0..) |*byte, index| byte.* = @truncate(index);
+
+    const first = frameTiles4Bpp(&bytes, 0, tiles_per_frame);
+    const middle = frameTiles4Bpp(&bytes, 1, tiles_per_frame);
+    const last = frameTiles4Bpp(&bytes, 2, tiles_per_frame);
+
+    try testing.expectEqual(tiles_per_frame, first.len);
+    try testing.expectEqual(@as(u8, 0), first[0].data_8[0]);
+    try testing.expectEqual(@as(u8, 64), middle[0].data_8[0]);
+    try testing.expectEqual(@as(u8, 191), last[1].data_8[31]);
+}
+
+test "ObjectTileFrameCache4Bpp tracks validity" {
+    const testing = @import("std").testing;
+    var cache: ObjectTileFrameCache4Bpp = .{};
+
+    try testing.expectEqual(@as(usize, 2), @sizeOf(ObjectTileFrameCache4Bpp));
+    try testing.expect(!cache.has(std.math.maxInt(u16)));
+    try testing.expect(!cache.has(7));
+    cache.record(7);
+    try testing.expect(cache.has(7));
+    try testing.expect(!cache.has(8));
+    cache.invalidate();
+    try testing.expect(!cache.has(7));
+}
+
+test "ObjectTileVariantFrameCache4Bpp includes the variant in its key" {
+    const testing = @import("std").testing;
+    var cache: ObjectTileVariantFrameCache4Bpp = .{};
+
+    try testing.expectEqual(@as(usize, 4), @sizeOf(ObjectTileVariantFrameCache4Bpp));
+    try testing.expect(!cache.has(0, std.math.maxInt(u16)));
+    cache.record(2, 7);
+    try testing.expect(cache.has(2, 7));
+    try testing.expect(!cache.has(3, 7));
+    try testing.expect(!cache.has(2, 8));
+    cache.invalidate();
+    try testing.expect(!cache.has(2, 7));
 }
