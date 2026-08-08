@@ -1,7 +1,9 @@
 //! Implements an API for dealing with background and object palettes.
 
 const gba = @import("gba.zig");
-const assert = @import("std").debug.assert;
+const std = @import("std");
+const assert = std.debug.assert;
+const palette_bank_color_count = 16;
 
 /// Represents a 256-color palette, to be used with either backgrounds or
 /// objects/sprites.
@@ -30,9 +32,19 @@ pub const bg_palette: *volatile Palette = @ptrCast(&gba.mem.palette[0x000]);
 /// Palette used for objects/sprites.
 pub const obj_palette: *volatile Palette = @ptrCast(&gba.mem.palette[0x100]);
 
+/// Return one 16-color background palette bank.
+pub fn backgroundPaletteBank(bank: u4) *volatile Palette.Bank {
+    return &bg_palette.banks[bank];
+}
+
+/// Return one 16-color object palette bank.
+pub fn objectPaletteBank(bank: u4) *volatile Palette.Bank {
+    return &obj_palette.banks[bank];
+}
+
 /// Copy memory into the background palette.
 pub fn memcpyBackgroundPalette(
-    /// Offset, in colors. (Each palette color uses 16 bytes.)
+    /// Offset, in colors. Each palette color uses two bytes.
     color_offset: u8,
     /// Pointer to color data that should be copied into palette memory.
     data: []align(2) const gba.ColorRgb555,
@@ -41,23 +53,22 @@ pub fn memcpyBackgroundPalette(
     gba.mem.memcpy16(&bg_palette.colors[color_offset], data.ptr, data.len);
 }
 
-/// Copy memory into the background palette.
+/// Copy memory into one 16-color background palette bank.
 pub inline fn memcpyBackgroundPaletteBank(
     /// Copy color data into this bank, 0-15.
     bank: u4,
-    /// Offset, in colors. (Each palette color uses 16 bytes.)
-    color_offset: u8,
+    /// Offset within this bank, in colors.
+    color_offset: u4,
     /// Pointer to color data that should be copied into palette memory.
     data: []align(2) const gba.ColorRgb555,
 ) void {
-    const offset = color_offset + (@as(u8, bank) << 5);
-    assert(offset + data.len <= bg_palette.colors.len);
-    memcpyBackgroundPalette(offset, data);
+    assert(paletteBankContains(color_offset, data.len));
+    gba.mem.memcpy16(&backgroundPaletteBank(bank)[color_offset], data.ptr, data.len);
 }
 
 /// Copy memory into the object palette.
 pub fn memcpyObjectPalette(
-    /// Offset, in colors. (Each palette color uses 16 bytes.)
+    /// Offset, in colors. Each palette color uses two bytes.
     color_offset: u8,
     /// Pointer to color data that should be copied into palette memory.
     data: []align(2) const gba.ColorRgb555,
@@ -66,16 +77,32 @@ pub fn memcpyObjectPalette(
     gba.mem.memcpy16(&obj_palette.colors[color_offset], data.ptr, data.len);
 }
 
-/// Copy memory into the object palette.
+/// Copy memory into one 16-color object palette bank.
 pub inline fn memcpyObjectPaletteBank(
     /// Copy color data into this bank, 0-15.
     bank: u4,
-    /// Offset, in colors. (Each palette color uses 16 bytes.)
-    color_offset: u8,
+    /// Offset within this bank, in colors.
+    color_offset: u4,
     /// Pointer to color data that should be copied into palette memory.
     data: []align(2) const gba.ColorRgb555,
 ) void {
-    const offset = color_offset + (@as(u8, bank) << 5);
-    assert(offset + data.len <= obj_palette.colors.len);
-    memcpyObjectPalette(offset, data);
+    assert(paletteBankContains(color_offset, data.len));
+    gba.mem.memcpy16(&objectPaletteBank(bank)[color_offset], data.ptr, data.len);
+}
+
+fn paletteBankContains(color_offset: u4, color_count: usize) bool {
+    return color_count <= palette_bank_color_count - @as(usize, color_offset);
+}
+
+test "palette bank offsets and bounds" {
+    var palette = Palette{ .colors = [_]gba.ColorRgb555{.black} ** 256 };
+    palette.banks[1][0] = .white;
+    palette.banks[15][15] = gba.ColorRgb555.rgb(1, 2, 3);
+
+    try std.testing.expectEqual(gba.ColorRgb555.white, palette.colors[16]);
+    try std.testing.expectEqual(gba.ColorRgb555.rgb(1, 2, 3), palette.colors[255]);
+    try std.testing.expect(paletteBankContains(0, 16));
+    try std.testing.expect(paletteBankContains(15, 1));
+    try std.testing.expect(!paletteBankContains(1, 16));
+    try std.testing.expect(!paletteBankContains(15, 2));
 }
