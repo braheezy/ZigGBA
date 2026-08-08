@@ -1,12 +1,113 @@
 //! Module for operations related to Object/Sprite memory.
 
 const gba = @import("gba.zig");
+const std = @import("std");
+const assert = std.debug.assert;
 
 /// Refers to object attributes data in OAM.
 /// Affine transformation matrices are interleaved with object attributes.
 /// OAM should only be updated during VBlank, to avoid graphical glitches.
 /// (See `gba.bios.vblankIntrWait`.)
 pub const objects: *align(8) volatile [128]Object = @ptrCast(gba.mem.oam);
+
+/// Number of object attribute entries available in OAM.
+pub const object_slot_count = objects.len;
+
+/// Describes an owned range of object attribute memory slots.
+///
+/// This is useful for projects which divide the GBA's 128 OAM entries among
+/// independent sprite systems. It checks range construction at compile time
+/// and checks accesses at runtime, while leaving sprite contents, coordinates,
+/// and lifetime policy to the application.
+pub const ObjectSlotRange = struct {
+    /// Human-readable name used in compile errors.
+    name: []const u8,
+    /// First OAM entry owned by this range.
+    start: u7,
+    /// Number of OAM entries owned by this range.
+    count: u8,
+
+    /// Initialize an object slot range.
+    ///
+    /// If the range extends past the 128 OAM entries, a compile error is
+    /// emitted.
+    pub fn init(
+        comptime name: []const u8,
+        comptime start: u8,
+        comptime count: u8,
+    ) ObjectSlotRange {
+        if (start >= object_slot_count) {
+            @compileError(name ++ " object slot range starts past OAM");
+        }
+        if (@as(u16, start) + @as(u16, count) > object_slot_count) {
+            @compileError(name ++ " object slot range exceeds OAM");
+        }
+        return .{
+            .name = name,
+            .start = @intCast(start),
+            .count = count,
+        };
+    }
+
+    /// Return the OAM entry immediately after this range.
+    pub fn end(self: ObjectSlotRange) u8 {
+        return @as(u8, self.start) + self.count;
+    }
+
+    /// Return the first OAM entry in this range.
+    pub fn baseSlot(self: ObjectSlotRange) u7 {
+        return self.start;
+    }
+
+    /// Return an OAM entry index at an offset within this range.
+    ///
+    /// Runtime safety checks ensure that `offset` is inside this range.
+    pub fn slot(self: ObjectSlotRange, offset: usize) u7 {
+        assert(offset < self.count);
+        return @intCast(@as(usize, self.start) + offset);
+    }
+
+    /// Return an OAM entry within this range.
+    ///
+    /// Runtime safety checks ensure that `offset` is inside this range.
+    pub fn object(self: ObjectSlotRange, offset: usize) *volatile Object {
+        return &objects[self.slot(offset)];
+    }
+
+    /// Return whether a subrange is fully contained within this range.
+    pub fn contains(self: ObjectSlotRange, offset: usize, count: usize) bool {
+        return offset <= self.count and count <= self.count - offset;
+    }
+
+    /// Return whether this range overlaps another object slot range.
+    pub fn overlaps(self: ObjectSlotRange, other: ObjectSlotRange) bool {
+        return @as(u8, self.start) < other.end() and @as(u8, other.start) < self.end();
+    }
+
+    /// Hide every object in this range.
+    pub fn hide(self: ObjectSlotRange) void {
+        for (0..self.count) |offset| {
+            self.object(offset).mode = .hidden;
+        }
+    }
+};
+
+/// Emit a compile error if any OAM ranges in a group overlap.
+///
+/// Pass only ranges that can be alive at the same time. Games may define
+/// separate layouts for mutually exclusive screens or cutscene phases.
+pub fn checkNoObjectSlotOverlap(
+    comptime group_name: []const u8,
+    comptime ranges: []const ObjectSlotRange,
+) void {
+    for (ranges, 0..) |left, left_index| {
+        for (ranges[left_index + 1 ..]) |right| {
+            if (left.overlaps(right)) {
+                @compileError(group_name ++ " object slot overlap: " ++ left.name ++ " overlaps " ++ right.name);
+            }
+        }
+    }
+}
 
 /// Set all objects to hidden.
 /// You likely want to do this upon initialization, if you're enabling objects.
@@ -370,3 +471,23 @@ pub const Object = packed struct(u48) {
         self.y = @intCast(vec.y);
     }
 };
+
+test "ObjectSlotRange describes bounded OAM ownership" {
+    const low = ObjectSlotRange.init("test low", 4, 4);
+    const high = ObjectSlotRange.init("test high", 8, 2);
+    const overlap = ObjectSlotRange.init("test overlap", 7, 2);
+
+    try std.testing.expectEqual(@as(u7, 4), low.baseSlot());
+    try std.testing.expectEqual(@as(u8, 8), low.end());
+    try std.testing.expectEqual(@as(u7, 7), low.slot(3));
+    try std.testing.expect(low.contains(1, 3));
+    try std.testing.expect(!low.contains(3, 2));
+    try std.testing.expect(!low.overlaps(high));
+    try std.testing.expect(low.overlaps(overlap));
+}
+
+comptime {
+    const low = ObjectSlotRange.init("object slot range test low", 4, 4);
+    const high = ObjectSlotRange.init("object slot range test high", 8, 2);
+    checkNoObjectSlotOverlap("object slot range test", &.{ low, high });
+}

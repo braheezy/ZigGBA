@@ -46,6 +46,9 @@ pub const ctrl = @import("display_ctrl.zig").ctrl;
 
 // Imports related to objects/sprites and OAM.
 pub const objects = @import("display_object.zig").objects;
+pub const object_slot_count = @import("display_object.zig").object_slot_count;
+pub const ObjectSlotRange = @import("display_object.zig").ObjectSlotRange;
+pub const checkNoObjectSlotOverlap = @import("display_object.zig").checkNoObjectSlotOverlap;
 pub const hideAllObjects = @import("display_object.zig").hideAllObjects;
 pub const oam_affine_values = @import("display_object.zig").oam_affine_values;
 pub const setObjectTransform = @import("display_object.zig").setObjectTransform;
