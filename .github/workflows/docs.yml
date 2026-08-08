@@ -10,6 +10,8 @@ on:
 
 jobs:
   build-docs:
+    # disable for now
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
