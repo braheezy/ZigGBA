@@ -208,47 +208,16 @@ pub fn build(std_b: *std.Build) void {
     const host_target = std_b.standardTargetOptions(.{});
     const optimize = std_b.standardOptimizeOption(.{});
 
-    // Run tests with `zig build test`.
-    const test_math = std_b.addRunArtifact(std_b.addTest(.{
+    // Run tests from a common source root so internal modules can import the
+    // shared SDK façade without escaping the module path.
+    const test_sdk = std_b.addRunArtifact(std_b.addTest(.{
         .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/math.zig"),
-            .target = host_target,
-            .optimize = optimize,
-        }),
-    }));
-    const test_format = std_b.addRunArtifact(std_b.addTest(.{
-        .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/format.zig"),
-            .target = host_target,
-            .optimize = optimize,
-        }),
-    }));
-    const test_display_vram = std_b.addRunArtifact(std_b.addTest(.{
-        .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/display_vram.zig"),
-            .target = host_target,
-            .optimize = optimize,
-        }),
-    }));
-    const test_display_object = std_b.addRunArtifact(std_b.addTest(.{
-        .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/display_object.zig"),
-            .target = host_target,
-            .optimize = optimize,
-        }),
-    }));
-    const test_display_palette = std_b.addRunArtifact(std_b.addTest(.{
-        .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/display_palette.zig"),
+            .root_source_file = std_b.path("src/gba/test.zig"),
             .target = host_target,
             .optimize = optimize,
         }),
     }));
 
     const test_step = std_b.step("test", "Run unit tests");
-    test_step.dependOn(&test_math.step);
-    test_step.dependOn(&test_format.step);
-    test_step.dependOn(&test_display_vram.step);
-    test_step.dependOn(&test_display_object.step);
-    test_step.dependOn(&test_display_palette.step);
+    test_step.dependOn(&test_sdk.step);
 }

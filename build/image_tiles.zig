@@ -2,8 +2,8 @@ const std = @import("std");
 const Image = @import("image.zig").Image;
 const ColorRgba32 = @import("color.zig").ColorRgba32;
 const Palettizer = @import("color.zig").Palettizer;
-const Tile4Bpp = @import("../src/gba/display.zig").Tile4Bpp;
-const Tile8Bpp = @import("../src/gba/display.zig").Tile8Bpp;
+const Tile4Bpp = @import("../src/gba/display/mod.zig").Tile4Bpp;
+const Tile8Bpp = @import("../src/gba/display/mod.zig").Tile8Bpp;
 
 const ConvertImageTilesOptions = struct {
     /// Used to resolve palette indices from colors in the image.

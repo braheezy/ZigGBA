@@ -4,7 +4,7 @@ const font = @import("build/font.zig");
 const image = @import("build/image.zig");
 const color = @import("build/color.zig");
 // Import types from GBA runtime
-const LoggerInterface = @import("src/gba/debug.zig").LoggerInterface;
+const LoggerInterface = @import("src/gba/debug/mod.zig").LoggerInterface;
 const CharsetFlags = font.CharsetFlags;
 
 const gba_linker_script_path = "src/gba/gba.ld";

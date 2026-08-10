@@ -2,8 +2,8 @@ const zpix = @import("zpix/root.zig");
 const std = @import("std");
 const assert = @import("std").debug.assert;
 const ColorRgba32 = @import("color.zig").ColorRgba32;
-const RectU16 = @import("../src/gba/math.zig").RectU16;
-const Vec2U16 = @import("../src/gba/math.zig").Vec2U16;
+const RectU16 = @import("../src/gba/math/mod.zig").RectU16;
+const Vec2U16 = @import("../src/gba/math/mod.zig").Vec2U16;
 
 pub const ConvertImageBitmap8BppOptions = @import("image_bitmap.zig").ConvertImageBitmap8BppOptions;
 pub const ConvertImageBitmap16BppOptions = @import("image_bitmap.zig").ConvertImageBitmap16BppOptions;
