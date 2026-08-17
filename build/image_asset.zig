@@ -17,7 +17,7 @@ pub const ImageAsset = struct {
     module: *std.Build.Module,
     /// Generated tile data, or Mode 4 pixels when `pixels` is set.
     tiles: std.Build.LazyPath,
-    /// Generated 16-color palette data in RGB555 format.
+    /// Generated palette data in RGB555 format.
     palette: std.Build.LazyPath,
     /// Generated screenblock entries for tilemap formats, when applicable.
     map: ?std.Build.LazyPath = null,
@@ -29,6 +29,9 @@ pub const ImageAsset = struct {
         obj_tiles_4bpp,
         /// 4bpp tiles and a normal-background tilemap.
         bg_tilemap_4bpp,
+        /// 4bpp tiles and a normal-background tilemap using up to sixteen
+        /// independent 16-color palette banks.
+        bg_tilemap_4bpp_multi_bank,
         /// 8bpp tiles and a normal-background tilemap.
         bg_tilemap_8bpp,
         /// 8bpp tiles and an affine-background tilemap.
@@ -62,6 +65,19 @@ pub const ImageAsset = struct {
     pub const TilemapOptions = struct {
         /// Palette bank stored in every generated screenblock entry.
         palette_bank: u4 = 0,
+        /// Reuse identical source tiles. Disabled by default so tile indices
+        /// retain source order and are easy to inspect while developing.
+        dedupe: bool = false,
+        /// Also reuse horizontally and vertically flipped tiles. Only has an
+        /// effect when `dedupe` is enabled.
+        dedupe_flips: bool = false,
+    };
+
+    /// Options specific to multi-bank normal 4bpp background tilemaps.
+    pub const MultiBankTilemap4BppOptions = struct {
+        /// Palette-bank assignment. `.auto` uses deterministic greedy packing;
+        /// `.provided` preserves artist-supplied bank layouts exactly.
+        palette_banks: image.MultiBankPalette4Bpp = .auto,
         /// Reuse identical source tiles. Disabled by default so tile indices
         /// retain source order and are easy to inspect while developing.
         dedupe: bool = false,
@@ -107,6 +123,8 @@ pub const ImageAsset = struct {
         sprite_sheet: ?SpriteSheet = null,
         /// Tilemap handling for `bg_tilemap_4bpp`.
         tilemap: TilemapOptions = .{},
+        /// Tilemap handling for `bg_tilemap_4bpp_multi_bank`.
+        multi_bank_tilemap_4bpp: MultiBankTilemap4BppOptions = .{},
         /// Tilemap handling for `bg_tilemap_8bpp`.
         tilemap_8bpp: Tilemap8BppOptions = .{},
         /// Tilemap handling for `affine_bg_tilemap_8bpp`.
@@ -152,6 +170,7 @@ pub const ImageAsset = struct {
         return switch (options.format) {
             .obj_tiles_4bpp => createObjTiles4Bpp(b, source_path, source, options),
             .bg_tilemap_4bpp => createBackgroundTilemap4Bpp(b, source_path, source, options),
+            .bg_tilemap_4bpp_multi_bank => createMultiBankBackgroundTilemap4Bpp(b, source_path, source, options),
             .bg_tilemap_8bpp => createBackgroundTilemap8Bpp(b, source_path, source, options),
             .affine_bg_tilemap_8bpp => createAffineBackgroundTilemap8Bpp(b, source_path, source, options),
             .mode4_bitmap_8bpp => createMode4Bitmap8Bpp(b, source_path, source, options),
@@ -466,6 +485,95 @@ fn createBackgroundTilemap4Bpp(
         .palette = palette_path,
         .map = map_path,
     };
+    return asset;
+}
+
+fn createMultiBankBackgroundTilemap4Bpp(
+    b: *std.Build,
+    source_path: []const u8,
+    source: image.Image,
+    options: ImageAsset.Options,
+) *ImageAsset {
+    validate4BppImage(source_path, source, "multi-bank 4bpp background");
+    if (source.getWidth() > 512 or source.getHeight() > 512) {
+        std.debug.panic(
+            "multi-bank 4bpp background image asset '{s}' is {d}x{d}; maps support at most 512x512 pixels",
+            .{ source_path, source.getWidth(), source.getHeight() },
+        );
+    }
+    switch (options.palette) {
+        .auto => {},
+        else => @panic("use multi_bank_tilemap_4bpp.palette_banks to configure a multi-bank 4bpp palette"),
+    }
+
+    const output = image.convertImageTilemap4BppMultiBank(b.allocator, source, .{
+        .palette_banks = options.multi_bank_tilemap_4bpp.palette_banks,
+        .dedupe = options.multi_bank_tilemap_4bpp.dedupe,
+        .dedupe_flips = options.multi_bank_tilemap_4bpp.dedupe_flips,
+    }) catch |err| {
+        switch (err) {
+            error.TileTooManyColors => std.debug.panic(
+                "multi-bank 4bpp image asset '{s}' has a tile with more than 15 opaque RGB555 colors",
+                .{source_path},
+            ),
+            error.TooManyPaletteBanks => std.debug.panic(
+                "multi-bank 4bpp image asset '{s}' needs more than 16 palette banks; " ++
+                    "supply artist-authored banks or simplify the per-tile color sets",
+                .{source_path},
+            ),
+            error.ColorNotInPaletteBanks => std.debug.panic(
+                "multi-bank 4bpp image asset '{s}' has a tile that fits none of its provided palette banks",
+                .{source_path},
+            ),
+            error.InvalidPaletteBanks => std.debug.panic(
+                "multi-bank 4bpp image asset '{s}' needs one through sixteen provided palette banks",
+                .{source_path},
+            ),
+            else => std.debug.panic("unable to convert image asset '{s}' to a multi-bank 4bpp background tilemap: {s}", .{
+                source_path,
+                @errorName(err),
+            }),
+        }
+    };
+    defer output.deinit(b.allocator);
+
+    const write_files = b.addWriteFiles();
+    const tiles_path = write_files.add("tiles.bin", std.mem.sliceAsBytes(output.tiles));
+    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&output.palette));
+    const map_path = write_files.add("map.bin", std.mem.sliceAsBytes(output.map));
+    const module_path = write_files.add("asset.zig", b.fmt(
+        \\const gba = @import("gba");
+        \\pub const width: u16 = {d};
+        \\pub const height: u16 = {d};
+        \\pub const source_width_tiles: usize = {d};
+        \\pub const source_height_tiles: usize = {d};
+        \\pub const map_width_tiles: usize = {d};
+        \\pub const map_height_tiles: usize = {d};
+        \\pub const tile_count: usize = {d};
+        \\pub const map_entry_count: usize = {d};
+        \\pub const palette_bank_count: usize = {d};
+        \\pub const background_size: gba.display.BackgroundSize.Normal = .{s};
+        \\const tiles_data align(4) = @embedFile("tiles.bin").*;
+        \\const palette_data align(2) = @embedFile("palette.bin").*;
+        \\const map_data align(2) = @embedFile("map.bin").*;
+        \\pub const tiles: *align(4) const [tile_count]gba.display.Tile4Bpp = @ptrCast(&tiles_data);
+        \\pub const palette: *align(2) const [256]gba.ColorRgb555 = @ptrCast(&palette_data);
+        \\pub const map: *align(2) const [map_entry_count]gba.display.Screenblock.Entry = @ptrCast(&map_data);
+    , .{
+        source.getWidth(),
+        source.getHeight(),
+        output.source_width_tiles,
+        output.source_height_tiles,
+        output.map_width_tiles,
+        output.map_height_tiles,
+        output.tiles.len,
+        output.map.len,
+        output.palette_bank_count,
+        normalBackgroundSizeName(output.map_width_tiles, output.map_height_tiles),
+    }));
+    const module = b.createModule(.{ .root_source_file = module_path });
+    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
+    asset.* = .{ .module = module, .tiles = tiles_path, .palette = palette_path, .map = map_path };
     return asset;
 }
 

@@ -45,6 +45,12 @@ pub const convertSaveImageTilemap4BppPath = @import("image_tilemap.zig").convert
 pub const convertImageTilemap4Bpp = @import("image_tilemap.zig").convertImageTilemap4Bpp;
 pub const ConvertImageTilemap4BppStep = @import("image_tilemap.zig").ConvertImageTilemap4BppStep;
 
+pub const MultiBankPalette4Bpp = @import("image_tilemap_4bpp_multibank.zig").PaletteBanks;
+pub const ConvertImageTilemap4BppMultiBankOptions = @import("image_tilemap_4bpp_multibank.zig").ConvertImageTilemap4BppMultiBankOptions;
+pub const ConvertImageTilemap4BppMultiBankOutput = @import("image_tilemap_4bpp_multibank.zig").ConvertImageTilemap4BppMultiBankOutput;
+pub const ConvertImageTilemap4BppMultiBankError = @import("image_tilemap_4bpp_multibank.zig").ConvertImageTilemap4BppMultiBankError;
+pub const convertImageTilemap4BppMultiBank = @import("image_tilemap_4bpp_multibank.zig").convertImageTilemap4BppMultiBank;
+
 pub const ConvertImageNormalTilemap8BppOptions = @import("image_tilemap_8bpp.zig").ConvertImageNormalTilemap8BppOptions;
 pub const ConvertImageNormalTilemap8BppOutput = @import("image_tilemap_8bpp.zig").ConvertImageNormalTilemap8BppOutput;
 pub const ConvertImageAffineTilemap8BppOptions = @import("image_tilemap_8bpp.zig").ConvertImageAffineTilemap8BppOptions;

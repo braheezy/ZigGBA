@@ -137,6 +137,60 @@ bg0_map.copyFrom(level.map[0..]);
 Source-order tiles are the default. Enable `dedupe` and `dedupe_flips` only
 when smaller tile data is worth the resulting non-linear tile indices.
 
+### Multi-bank 4bpp tiled backgrounds
+
+Use `bg_tilemap_4bpp_multi_bank` when the background needs more than fifteen
+opaque colors overall but every 8×8 tile fits in one 16-color palette bank.
+The default `.auto` policy packs each tile's complete color set into the first
+bank that fits, creating banks as needed. It is deterministic and convenient,
+but deliberately greedy rather than a global palette optimizer.
+
+```zig
+_ = assets.addImage("level", .{
+    .source_file = b.path("assets/level.png"),
+    .format = .bg_tilemap_4bpp_multi_bank,
+    .multi_bank_tilemap_4bpp = .{
+        .dedupe = true,
+        .dedupe_flips = true,
+    },
+});
+```
+
+The generated `palette` contains all sixteen 16-color background banks
+(256 RGB555 entries). Each generated map entry selects the bank required by
+its tile, so the runtime setup is otherwise the same as a normal 4bpp map:
+
+```zig
+const level = assets.level;
+const bg0_map = gba.display.BackgroundMap.setup(0, .{
+    .base_screenblock = 28,
+    .size = level.background_size,
+});
+gba.display.memcpyBackgroundPalette(0, level.palette[0..]);
+gba.display.memcpyBackgroundTiles4Bpp(0, level.tiles[0..]);
+bg0_map.copyFrom(level.map[0..]);
+```
+
+For an artist-authored layout, provide one through sixteen complete banks.
+Entry zero in each bank is reserved for transparent pixels; every opaque tile
+color must appear in one of the remaining entries of a single bank.
+
+```zig
+const palette_banks = [_][16]gba.ColorRgb555{
+    .{ .black, .red, .green, .blue, .white, .black, .black, .black,
+       .black, .black, .black, .black, .black, .black, .black, .black },
+    .{ .black, .blue, .green, .red, .white, .black, .black, .black,
+       .black, .black, .black, .black, .black, .black, .black, .black },
+};
+_ = assets.addImage("level", .{
+    .source_file = b.path("assets/level.png"),
+    .format = .bg_tilemap_4bpp_multi_bank,
+    .multi_bank_tilemap_4bpp = .{
+        .palette_banks = .{ .provided = &palette_banks },
+    },
+});
+```
+
 ### 8bpp tiled backgrounds
 
 Normal and affine 8bpp backgrounds are separate targets because normal maps

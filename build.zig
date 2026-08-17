@@ -17,8 +17,8 @@ fn buildExamples(b: *GbaBuild) void {
     var charBlock_assets = charBlock.createAssetModule();
     _ = charBlock_assets.addImage("ids", .{
         .source_file = b.path("examples/charBlock/charBlock.png"),
-        .format = .bg_tilemap_4bpp,
-        .tilemap = .{ .dedupe = true, .dedupe_flips = true },
+        .format = .bg_tilemap_4bpp_multi_bank,
+        .multi_bank_tilemap_4bpp = .{ .dedupe = true, .dedupe_flips = true },
     });
     charBlock_assets.addImport("assets");
     _ = b.addExecutable(.{
