@@ -137,6 +137,42 @@ bg0_map.copyFrom(level.map[0..]);
 Source-order tiles are the default. Enable `dedupe` and `dedupe_flips` only
 when smaller tile data is worth the resulting non-linear tile indices.
 
+### 8bpp tiled backgrounds
+
+Normal and affine 8bpp backgrounds are separate targets because normal maps
+can encode flips while affine maps use byte tile indices and cannot. Both use
+the full 256-color background palette.
+
+```zig
+_ = assets.addImage("normal_bg", .{
+    .source_file = b.path("assets/normal-bg.png"),
+    .format = .bg_tilemap_8bpp,
+    .tilemap_8bpp = .{ .dedupe = true, .dedupe_flips = true },
+});
+_ = assets.addImage("affine_bg", .{
+    .source_file = b.path("assets/affine-tiles.png"),
+    .format = .affine_bg_tilemap_8bpp,
+    .affine_tilemap_8bpp = .{ .repeat_source = true, .dedupe = true },
+});
+```
+
+`affine_bg_tilemap_8bpp` automatically chooses the smallest square affine map
+that contains its source tiles. With `repeat_source`, the source tile grid is
+repeated to fill that map; otherwise it is placed at the top-left and unused
+entries select tile zero.
+
+```zig
+const bg2 = assets.affine_bg;
+gba.display.memcpyBackgroundTiles8Bpp(0, bg2.tiles[0..]);
+gba.display.memcpyBackgroundPalette(0, bg2.palette[0..]);
+gba.display.bg_ctrl[2] = .initAffine(.{
+    .base_screenblock = 5,
+    .size = bg2.background_size,
+});
+const map = gba.display.AffineBackgroundMap.initCtrl(gba.display.bg_ctrl[2]);
+map.copyFrom(bg2.map[0..]);
+```
+
 ### Mode 4 bitmaps
 
 `mode4_bitmap_8bpp` produces a full 240×160 indexed bitmap and a 256-color

@@ -112,21 +112,17 @@ fn buildExamples(b: *GbaBuild) void {
         .root_source_file = b.path("examples/bgAffine/bgAffine.zig"),
         .build_options = .{ .text_charsets = .all },
     });
-    const bgAffine_pal = color.PalettizerNearest.create(
-        b.allocator(),
-        &[_]color.ColorRgba32{
-            .transparent,
-            .white,
-            .red,
-            .green,
-            .aqua,
+    var bgAffine_assets = bgAffine.createAssetModule();
+    _ = bgAffine_assets.addImage("background", .{
+        .source_file = b.path("examples/bgAffine/tiles.png"),
+        .format = .affine_bg_tilemap_8bpp,
+        .palette = .{ .provided = &.{ .white, .red, .green, color.ColorRgb555.rgb(0, 16, 31) } },
+        .affine_tilemap_8bpp = .{
+            .repeat_source = true,
+            .dedupe = true,
         },
-    ) catch @panic("OOM");
-    _ = bgAffine.addConvertImageTiles8BppStep(.{
-        .image_path = "examples/bgAffine/tiles.png",
-        .output_path = "examples/bgAffine/tiles.bin",
-        .options = .{ .palettizer = bgAffine_pal.pal() },
     });
+    bgAffine_assets.addImport("assets");
 
     var jesuMusic = b.addExecutable(.{
         .name = "jesuMusic",

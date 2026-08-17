@@ -564,6 +564,17 @@ pub const AffineBackgroundMap = struct {
         screenblock.setAffine(@truncate(tile_index), entry);
     }
 
+    /// Copy complete affine map data into this background map.
+    ///
+    /// Map entries are stored as pairs because affine screenblock memory must
+    /// be written in 16-bit units.
+    pub fn copyFrom(self: AffineBackgroundMap, entries: []align(2) const Screenblock.AffinePair) void {
+        const map_dimension = @as(usize, self.dimension());
+        assert(entries.len == map_dimension * map_dimension / 2);
+        const destination: *align(2) volatile Screenblock = @alignCast(&screenblocks[self.base_screenblock]);
+        gba.mem.memcpy16(destination, entries.ptr, entries.len);
+    }
+
     /// Given a tile coordinate, get the index of the corresponding entry
     /// within the affine tile data.
     pub fn getTileIndex(self: AffineBackgroundMap, x: u7, y: u7) u14 {

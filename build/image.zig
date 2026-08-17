@@ -45,6 +45,14 @@ pub const convertSaveImageTilemap4BppPath = @import("image_tilemap.zig").convert
 pub const convertImageTilemap4Bpp = @import("image_tilemap.zig").convertImageTilemap4Bpp;
 pub const ConvertImageTilemap4BppStep = @import("image_tilemap.zig").ConvertImageTilemap4BppStep;
 
+pub const ConvertImageNormalTilemap8BppOptions = @import("image_tilemap_8bpp.zig").ConvertImageNormalTilemap8BppOptions;
+pub const ConvertImageNormalTilemap8BppOutput = @import("image_tilemap_8bpp.zig").ConvertImageNormalTilemap8BppOutput;
+pub const ConvertImageAffineTilemap8BppOptions = @import("image_tilemap_8bpp.zig").ConvertImageAffineTilemap8BppOptions;
+pub const ConvertImageAffineTilemap8BppOutput = @import("image_tilemap_8bpp.zig").ConvertImageAffineTilemap8BppOutput;
+pub const ConvertImageTilemap8BppError = @import("image_tilemap_8bpp.zig").ConvertImageTilemap8BppError;
+pub const convertImageNormalTilemap8Bpp = @import("image_tilemap_8bpp.zig").convertImageNormalTilemap8Bpp;
+pub const convertImageAffineTilemap8Bpp = @import("image_tilemap_8bpp.zig").convertImageAffineTilemap8Bpp;
+
 /// Provides an interface for loading and reading image data.
 pub const Image = struct {
     data: zpix.image.Image,

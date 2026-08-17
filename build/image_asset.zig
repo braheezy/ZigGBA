@@ -8,6 +8,7 @@ const std = @import("std");
 const color = @import("color.zig");
 const image = @import("image.zig");
 const ColorRgb555 = @import("../src/gba/graphics/color.zig").ColorRgb555;
+const BackgroundSize = @import("../src/gba/display/mod.zig").BackgroundSize;
 
 /// A converted image and the generated module that exposes its runtime data.
 pub const ImageAsset = struct {
@@ -28,6 +29,10 @@ pub const ImageAsset = struct {
         obj_tiles_4bpp,
         /// 4bpp tiles and a normal-background tilemap.
         bg_tilemap_4bpp,
+        /// 8bpp tiles and a normal-background tilemap.
+        bg_tilemap_8bpp,
+        /// 8bpp tiles and an affine-background tilemap.
+        affine_bg_tilemap_8bpp,
         /// 8bpp indexed pixels for a full-screen Mode 4 bitmap.
         mode4_bitmap_8bpp,
     };
@@ -65,6 +70,29 @@ pub const ImageAsset = struct {
         dedupe_flips: bool = false,
     };
 
+    /// Options specific to normal 8bpp background tilemaps.
+    pub const Tilemap8BppOptions = struct {
+        /// Reuse identical source tiles. Disabled by default so tile indices
+        /// retain source order and are easy to inspect while developing.
+        dedupe: bool = false,
+        /// Also reuse horizontally and vertically flipped tiles. Only has an
+        /// effect when `dedupe` is enabled.
+        dedupe_flips: bool = false,
+    };
+
+    /// Options specific to affine 8bpp background tilemaps.
+    pub const AffineTilemap8BppOptions = struct {
+        /// Explicit affine map size. When omitted, the smallest square GBA
+        /// affine size that contains the source tile grid is selected.
+        size: ?BackgroundSize.Affine = null,
+        /// Repeat the source tile grid to fill the affine map. Otherwise the
+        /// source occupies the top-left and remaining entries use tile zero.
+        repeat_source: bool = false,
+        /// Reuse identical source tiles. Disabled by default so tile indices
+        /// retain source order and are easy to inspect while developing.
+        dedupe: bool = false,
+    };
+
     pub const Options = struct {
         /// Source image to convert. It must be available when `build.zig` is
         /// evaluated; generated images are not supported by this eager path.
@@ -79,6 +107,10 @@ pub const ImageAsset = struct {
         sprite_sheet: ?SpriteSheet = null,
         /// Tilemap handling for `bg_tilemap_4bpp`.
         tilemap: TilemapOptions = .{},
+        /// Tilemap handling for `bg_tilemap_8bpp`.
+        tilemap_8bpp: Tilemap8BppOptions = .{},
+        /// Tilemap handling for `affine_bg_tilemap_8bpp`.
+        affine_tilemap_8bpp: AffineTilemap8BppOptions = .{},
     };
 
     /// Adds this asset as an import of `consumer_module`.
@@ -120,6 +152,8 @@ pub const ImageAsset = struct {
         return switch (options.format) {
             .obj_tiles_4bpp => createObjTiles4Bpp(b, source_path, source, options),
             .bg_tilemap_4bpp => createBackgroundTilemap4Bpp(b, source_path, source, options),
+            .bg_tilemap_8bpp => createBackgroundTilemap8Bpp(b, source_path, source, options),
+            .affine_bg_tilemap_8bpp => createAffineBackgroundTilemap8Bpp(b, source_path, source, options),
             .mode4_bitmap_8bpp => createMode4Bitmap8Bpp(b, source_path, source, options),
         };
     }
@@ -432,6 +466,164 @@ fn createBackgroundTilemap4Bpp(
         .palette = palette_path,
         .map = map_path,
     };
+    return asset;
+}
+
+fn createBackgroundTilemap8Bpp(
+    b: *std.Build,
+    source_path: []const u8,
+    source: image.Image,
+    options: ImageAsset.Options,
+) *ImageAsset {
+    validate8BppTilemapImage(source_path, source, "normal");
+    if (source.getWidth() > 512 or source.getHeight() > 512) {
+        std.debug.panic(
+            "normal 8bpp background image asset '{s}' is {d}x{d}; maps support at most 512x512 pixels",
+            .{ source_path, source.getWidth(), source.getHeight() },
+        );
+    }
+
+    const palette = preparePalette8BppOrPanic(source_path, source, options.palette);
+    var palette_adapter = PaletteMapper{
+        .colors = palette.colors[0..palette.count],
+        .mode = switch (options.palette) {
+            .nearest => .nearest,
+            else => .exact,
+        },
+    };
+    const output = image.convertImageNormalTilemap8Bpp(b.allocator, source, .{
+        .palettizer = palette_adapter.palettizer(),
+        .dedupe = options.tilemap_8bpp.dedupe,
+        .dedupe_flips = options.tilemap_8bpp.dedupe_flips,
+    }) catch |err| {
+        std.debug.panic("unable to convert image asset '{s}' to a normal 8bpp background tilemap: {s}", .{
+            source_path,
+            @errorName(err),
+        });
+    };
+    defer output.deinit(b.allocator);
+
+    return createNormal8BppModule(b, source, palette, output);
+}
+
+fn createNormal8BppModule(
+    b: *std.Build,
+    source: image.Image,
+    palette: Palette8Bpp,
+    output: image.ConvertImageNormalTilemap8BppOutput,
+) *ImageAsset {
+    const write_files = b.addWriteFiles();
+    const tiles_path = write_files.add("tiles.bin", std.mem.sliceAsBytes(output.tiles));
+    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&palette.colors));
+    const map_path = write_files.add("map.bin", std.mem.sliceAsBytes(output.map));
+    const module_path = write_files.add("asset.zig", b.fmt(
+        \\const gba = @import("gba");
+        \\pub const width: u16 = {d};
+        \\pub const height: u16 = {d};
+        \\pub const source_width_tiles: usize = {d};
+        \\pub const source_height_tiles: usize = {d};
+        \\pub const map_width_tiles: usize = {d};
+        \\pub const map_height_tiles: usize = {d};
+        \\pub const tile_count: usize = {d};
+        \\pub const map_entry_count: usize = {d};
+        \\pub const palette_color_count: usize = {d};
+        \\pub const background_size: gba.display.BackgroundSize.Normal = .{s};
+        \\const tiles_data align(4) = @embedFile("tiles.bin").*;
+        \\const palette_data align(2) = @embedFile("palette.bin").*;
+        \\const map_data align(2) = @embedFile("map.bin").*;
+        \\pub const tiles: *align(4) const [tile_count]gba.display.Tile8Bpp = @ptrCast(&tiles_data);
+        \\pub const palette: *align(2) const [256]gba.ColorRgb555 = @ptrCast(&palette_data);
+        \\pub const map: *align(2) const [map_entry_count]gba.display.Screenblock.Entry = @ptrCast(&map_data);
+    , .{
+        source.getWidth(),
+        source.getHeight(),
+        output.source_width_tiles,
+        output.source_height_tiles,
+        output.map_width_tiles,
+        output.map_height_tiles,
+        output.tiles.len,
+        output.map.len,
+        palette.count,
+        normalBackgroundSizeName(output.map_width_tiles, output.map_height_tiles),
+    }));
+    const module = b.createModule(.{ .root_source_file = module_path });
+    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
+    asset.* = .{ .module = module, .tiles = tiles_path, .palette = palette_path, .map = map_path };
+    return asset;
+}
+
+fn createAffineBackgroundTilemap8Bpp(
+    b: *std.Build,
+    source_path: []const u8,
+    source: image.Image,
+    options: ImageAsset.Options,
+) *ImageAsset {
+    validate8BppTilemapImage(source_path, source, "affine");
+    const affine_size = options.affine_tilemap_8bpp.size orelse affineSizeForSource(source_path, source);
+    const map_dimension = affineDimension(affine_size);
+    if (source.getWidth() / 8 > map_dimension or source.getHeight() / 8 > map_dimension) {
+        std.debug.panic(
+            "affine background image asset '{s}' does not fit its {d}x{d}-tile map",
+            .{ source_path, map_dimension, map_dimension },
+        );
+    }
+
+    const palette = preparePalette8BppOrPanic(source_path, source, options.palette);
+    var palette_adapter = PaletteMapper{
+        .colors = palette.colors[0..palette.count],
+        .mode = switch (options.palette) {
+            .nearest => .nearest,
+            else => .exact,
+        },
+    };
+    const output = image.convertImageAffineTilemap8Bpp(b.allocator, source, .{
+        .palettizer = palette_adapter.palettizer(),
+        .size = affine_size,
+        .repeat_source = options.affine_tilemap_8bpp.repeat_source,
+        .dedupe = options.affine_tilemap_8bpp.dedupe,
+    }) catch |err| {
+        std.debug.panic("unable to convert image asset '{s}' to an affine 8bpp background tilemap: {s}", .{
+            source_path,
+            @errorName(err),
+        });
+    };
+    defer output.deinit(b.allocator);
+
+    const write_files = b.addWriteFiles();
+    const tiles_path = write_files.add("tiles.bin", std.mem.sliceAsBytes(output.tiles));
+    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&palette.colors));
+    const map_path = write_files.add("map.bin", std.mem.sliceAsBytes(output.map));
+    const module_path = write_files.add("asset.zig", b.fmt(
+        \\const gba = @import("gba");
+        \\pub const width: u16 = {d};
+        \\pub const height: u16 = {d};
+        \\pub const source_width_tiles: usize = {d};
+        \\pub const source_height_tiles: usize = {d};
+        \\pub const map_dimension_tiles: usize = {d};
+        \\pub const tile_count: usize = {d};
+        \\pub const map_pair_count: usize = {d};
+        \\pub const palette_color_count: usize = {d};
+        \\pub const background_size: gba.display.BackgroundSize.Affine = .{s};
+        \\const tiles_data align(4) = @embedFile("tiles.bin").*;
+        \\const palette_data align(2) = @embedFile("palette.bin").*;
+        \\const map_data align(2) = @embedFile("map.bin").*;
+        \\pub const tiles: *align(4) const [tile_count]gba.display.Tile8Bpp = @ptrCast(&tiles_data);
+        \\pub const palette: *align(2) const [256]gba.ColorRgb555 = @ptrCast(&palette_data);
+        \\pub const map: *align(2) const [map_pair_count]gba.display.Screenblock.AffinePair = @ptrCast(&map_data);
+    , .{
+        source.getWidth(),
+        source.getHeight(),
+        output.source_width_tiles,
+        output.source_height_tiles,
+        output.map_dimension_tiles,
+        output.tiles.len,
+        output.map.len,
+        palette.count,
+        affineBackgroundSizeName(affine_size),
+    }));
+    const module = b.createModule(.{ .root_source_file = module_path });
+    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
+    asset.* = .{ .module = module, .tiles = tiles_path, .palette = palette_path, .map = map_path };
     return asset;
 }
 
@@ -816,6 +1008,45 @@ fn validate4BppImage(source_path: []const u8, source: image.Image, target: []con
             .{ source_path, source.getWidth(), source.getHeight(), target },
         );
     }
+}
+
+fn validate8BppTilemapImage(source_path: []const u8, source: image.Image, target: []const u8) void {
+    if (source.isEmpty()) {
+        std.debug.panic("{s} 8bpp background image asset '{s}' is empty", .{ target, source_path });
+    }
+    if ((source.getWidth() & 7) != 0 or (source.getHeight() & 7) != 0) {
+        std.debug.panic(
+            "{s} 8bpp background image asset '{s}' is {d}x{d}; dimensions must be divisible by 8",
+            .{ target, source_path, source.getWidth(), source.getHeight() },
+        );
+    }
+}
+
+fn affineSizeForSource(source_path: []const u8, source: image.Image) BackgroundSize.Affine {
+    const source_dimension = @max(source.getWidth() / 8, source.getHeight() / 8);
+    return switch (source_dimension) {
+        0...16 => .size_16,
+        17...32 => .size_32,
+        33...64 => .size_64,
+        65...128 => .size_128,
+        else => std.debug.panic(
+            "affine background image asset '{s}' is {d}x{d}; maps support at most 1024x1024 pixels",
+            .{ source_path, source.getWidth(), source.getHeight() },
+        ),
+    };
+}
+
+fn affineDimension(size: BackgroundSize.Affine) u16 {
+    return @as(u16, 16) << @intFromEnum(size);
+}
+
+fn affineBackgroundSizeName(size: BackgroundSize.Affine) []const u8 {
+    return switch (size) {
+        .size_16 => "size_16",
+        .size_32 => "size_32",
+        .size_64 => "size_64",
+        .size_128 => "size_128",
+    };
 }
 
 fn normalBackgroundSizeName(width_tiles: u16, height_tiles: u16) []const u8 {
