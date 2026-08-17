@@ -264,6 +264,17 @@ pub const BackgroundMap = struct {
         return &screenblocks[self.base_screenblock];
     }
 
+    /// Copy complete screenblock data into this background map.
+    ///
+    /// `entries` must contain exactly one 32x32 screenblock for each
+    /// screenblock used by this map. This is suitable for generated normal
+    /// background tilemaps.
+    pub fn copyFrom(self: BackgroundMap, entries: []align(2) const Screenblock.Entry) void {
+        assert(entries.len == @as(usize, self.getScreenblockCount()) * 1024);
+        const destination: *align(2) volatile Screenblock = @alignCast(self.getBaseScreenblock());
+        gba.mem.memcpy16(destination, entries.ptr, entries.len);
+    }
+
     /// Given a tile coordinate, get the index of the screenblock which it
     /// belongs to.
     pub fn getScreenblockIndex(self: BackgroundMap, x: u6, y: u6) u5 {

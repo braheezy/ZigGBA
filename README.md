@@ -104,6 +104,39 @@ _ = assets.addImage("hero", .{
 Lower-level image converters remain available for project-specific processing
 and formats not yet covered by this high-level API.
 
+### Tiled backgrounds
+
+Use `bg_tilemap_4bpp` to generate 4bpp tiles and a normal-background map from
+one PNG. The map is padded to the GBA's 32×32 or 64×64 screenblock layouts and
+its entries use tile index zero as the first generated tile.
+
+```zig
+_ = assets.addImage("level", .{
+    .source_file = b.path("assets/level.png"),
+    .format = .bg_tilemap_4bpp,
+    .tilemap = .{
+        .dedupe = true,
+        .dedupe_flips = true,
+    },
+});
+```
+
+At runtime, configure the matching map size and copy the generated data:
+
+```zig
+const level = assets.level;
+const bg0_map = gba.display.BackgroundMap.setup(0, .{
+    .base_screenblock = 28,
+    .size = level.background_size,
+});
+gba.display.memcpyBackgroundPalette(0, level.palette[0..]);
+gba.display.memcpyBackgroundTiles4Bpp(0, level.tiles[0..]);
+bg0_map.copyFrom(level.map[0..]);
+```
+
+Source-order tiles are the default. Enable `dedupe` and `dedupe_flips` only
+when smaller tile data is worth the resulting non-linear tile indices.
+
 ## Fork
 
 This fork has too many changes to document. The highlights are:

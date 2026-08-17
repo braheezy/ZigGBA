@@ -18,10 +18,14 @@ pub const ImageAsset = struct {
     tiles: std.Build.LazyPath,
     /// Generated 16-color palette data in RGB555 format.
     palette: std.Build.LazyPath,
+    /// Generated screenblock entries for tilemap formats, when applicable.
+    map: ?std.Build.LazyPath = null,
 
     pub const Format = enum {
         /// 4bpp tiles for use with GBA OBJ (sprite) graphics.
         obj_tiles_4bpp,
+        /// 4bpp tiles and a normal-background tilemap.
+        bg_tilemap_4bpp,
     };
 
     /// How opaque image colors are assigned to the 15 usable 4bpp palette
@@ -45,6 +49,18 @@ pub const ImageAsset = struct {
         frame_height: u16,
     };
 
+    /// Options specific to normal 4bpp background tilemaps.
+    pub const TilemapOptions = struct {
+        /// Palette bank stored in every generated screenblock entry.
+        palette_bank: u4 = 0,
+        /// Reuse identical source tiles. Disabled by default so tile indices
+        /// retain source order and are easy to inspect while developing.
+        dedupe: bool = false,
+        /// Also reuse horizontally and vertically flipped tiles. Only has an
+        /// effect when `dedupe` is enabled.
+        dedupe_flips: bool = false,
+    };
+
     pub const Options = struct {
         /// Source image to convert. It must be available when `build.zig` is
         /// evaluated; generated images are not supported by this eager path.
@@ -57,6 +73,8 @@ pub const ImageAsset = struct {
         /// Optional sprite-frame grid. When omitted, the full image is one
         /// frame. Tiles remain in the source image's row-major tile order.
         sprite_sheet: ?SpriteSheet = null,
+        /// Tilemap handling for `bg_tilemap_4bpp`.
+        tilemap: TilemapOptions = .{},
     };
 
     /// Adds this asset as an import of `consumer_module`.
@@ -97,6 +115,7 @@ pub const ImageAsset = struct {
 
         return switch (options.format) {
             .obj_tiles_4bpp => createObjTiles4Bpp(b, source_path, source, options),
+            .bg_tilemap_4bpp => createBackgroundTilemap4Bpp(b, source_path, source, options),
         };
     }
 };
@@ -192,33 +211,10 @@ fn createObjTiles4Bpp(
     source: image.Image,
     options: ImageAsset.Options,
 ) *ImageAsset {
-    validateObjImage(source_path, source);
+    validate4BppImage(source_path, source, "4bpp OBJ");
     const frames = getSpriteSheetInfo(source_path, source, options.sprite_sheet);
 
-    const palette = preparePalette4Bpp(source, options.palette) catch |err| switch (err) {
-        error.TooManyColors => std.debug.panic(
-            "image asset '{s}' needs more than 15 opaque RGB555 colors; " ++
-                "set the palette policy to nearest to opt into lossy mapping",
-            .{source_path},
-        ),
-        error.EmptyPalette => std.debug.panic(
-            "image asset '{s}' has an empty explicit palette; provide one to 15 opaque colors",
-            .{source_path},
-        ),
-        error.PaletteTooLarge => std.debug.panic(
-            "image asset '{s}' has more than 15 explicit opaque palette colors",
-            .{source_path},
-        ),
-        error.DuplicatePaletteColor => std.debug.panic(
-            "image asset '{s}' has duplicate explicit RGB555 palette colors",
-            .{source_path},
-        ),
-        error.ColorNotInPalette => std.debug.panic(
-            "image asset '{s}' uses an opaque color not present in its explicit RGB555 palette; " ++
-                "use the nearest palette policy to opt into lossy mapping",
-            .{source_path},
-        ),
-    };
+    const palette = preparePaletteOrPanic(source_path, source, options.palette);
     var palette_adapter = PaletteMapper{
         .colors = palette.colors[0..palette.count],
         .mode = switch (options.palette) {
@@ -267,7 +263,6 @@ fn createObjTiles4Bpp(
         \\const palette_data align(2) = @embedFile("palette.bin").*;
         \\pub const tiles: *align(4) const [tile_count]gba.display.Tile4Bpp = @ptrCast(&tiles_data);
         \\pub const palette: *align(2) const [16]gba.ColorRgb555 = @ptrCast(&palette_data);
-        \\ 
     , .{
         source.getWidth(),
         source.getHeight(),
@@ -292,6 +287,121 @@ fn createObjTiles4Bpp(
         .palette = palette_path,
     };
     return asset;
+}
+
+fn createBackgroundTilemap4Bpp(
+    b: *std.Build,
+    source_path: []const u8,
+    source: image.Image,
+    options: ImageAsset.Options,
+) *ImageAsset {
+    validate4BppImage(source_path, source, "4bpp background tilemap");
+    if (source.getWidth() > 512 or source.getHeight() > 512) {
+        std.debug.panic(
+            "background image asset '{s}' is {d}x{d}; normal background maps support at most 512x512 pixels",
+            .{ source_path, source.getWidth(), source.getHeight() },
+        );
+    }
+
+    const palette = preparePaletteOrPanic(source_path, source, options.palette);
+    var palette_adapter = PaletteMapper{
+        .colors = palette.colors[0..palette.count],
+        .mode = switch (options.palette) {
+            .nearest => .nearest,
+            else => .exact,
+        },
+    };
+    const output = image.convertImageTilemap4Bpp(
+        b.allocator,
+        source,
+        .{
+            .palettizer = palette_adapter.palettizer(),
+            .palette = options.tilemap.palette_bank,
+            .dedupe = options.tilemap.dedupe,
+            .dedupe_flips = options.tilemap.dedupe_flips,
+        },
+    ) catch |err| {
+        std.debug.panic("unable to convert image asset '{s}' to a 4bpp background tilemap: {s}", .{
+            source_path,
+            @errorName(err),
+        });
+    };
+    defer output.deinit(b.allocator);
+
+    const write_files = b.addWriteFiles();
+    const tiles_path = write_files.add("tiles.bin", std.mem.sliceAsBytes(output.tiles));
+    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&palette.colors));
+    const map_path = write_files.add("map.bin", std.mem.sliceAsBytes(output.map));
+    const module_path = write_files.add("asset.zig", b.fmt(
+        \\const gba = @import("gba");
+        \\pub const width: u16 = {d};
+        \\pub const height: u16 = {d};
+        \\pub const source_width_tiles: usize = {d};
+        \\pub const source_height_tiles: usize = {d};
+        \\pub const map_width_tiles: usize = {d};
+        \\pub const map_height_tiles: usize = {d};
+        \\pub const tile_count: usize = {d};
+        \\pub const map_entry_count: usize = {d};
+        \\pub const palette_color_count: usize = {d};
+        \\pub const background_size: gba.display.BackgroundSize.Normal = .{s};
+        \\const tiles_data align(4) = @embedFile("tiles.bin").*;
+        \\const palette_data align(2) = @embedFile("palette.bin").*;
+        \\const map_data align(2) = @embedFile("map.bin").*;
+        \\pub const tiles: *align(4) const [tile_count]gba.display.Tile4Bpp = @ptrCast(&tiles_data);
+        \\pub const palette: *align(2) const [16]gba.ColorRgb555 = @ptrCast(&palette_data);
+        \\pub const map: *align(2) const [map_entry_count]gba.display.Screenblock.Entry = @ptrCast(&map_data);
+    , .{
+        source.getWidth(),
+        source.getHeight(),
+        output.source_width_tiles,
+        output.source_height_tiles,
+        output.map_width_tiles,
+        output.map_height_tiles,
+        output.tiles.len,
+        output.map.len,
+        palette.count,
+        normalBackgroundSizeName(output.map_width_tiles, output.map_height_tiles),
+    }));
+    const module = b.createModule(.{ .root_source_file = module_path });
+    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
+    asset.* = .{
+        .module = module,
+        .tiles = tiles_path,
+        .palette = palette_path,
+        .map = map_path,
+    };
+    return asset;
+}
+
+fn preparePaletteOrPanic(
+    source_path: []const u8,
+    source: image.Image,
+    policy: ImageAsset.Palette,
+) Palette4Bpp {
+    return preparePalette4Bpp(source, policy) catch |err| switch (err) {
+        error.TooManyColors => std.debug.panic(
+            "image asset '{s}' needs more than 15 opaque RGB555 colors; " ++
+                "set the palette policy to nearest to opt into lossy mapping",
+            .{source_path},
+        ),
+        error.EmptyPalette => std.debug.panic(
+            "image asset '{s}' has an empty explicit palette; provide one to 15 opaque colors",
+            .{source_path},
+        ),
+        error.PaletteTooLarge => std.debug.panic(
+            "image asset '{s}' has more than 15 explicit opaque palette colors",
+            .{source_path},
+        ),
+        error.DuplicatePaletteColor => std.debug.panic(
+            "image asset '{s}' has duplicate explicit RGB555 palette colors",
+            .{source_path},
+        ),
+        error.ColorNotInPalette => std.debug.panic(
+            "image asset '{s}' uses an opaque color not present in its explicit RGB555 palette; " ++
+                "use the nearest palette policy to opt into lossy mapping",
+            .{source_path},
+        ),
+    };
 }
 
 const PaletteError = error{
@@ -476,16 +586,32 @@ const SpriteSheetInfo = struct {
     frame_tile_count: usize,
 };
 
-fn validateObjImage(source_path: []const u8, source: image.Image) void {
+fn validate4BppImage(source_path: []const u8, source: image.Image, target: []const u8) void {
     if (source.isEmpty()) {
         std.debug.panic("image asset '{s}' is empty", .{source_path});
     }
     if ((source.getWidth() & 0x7) != 0 or (source.getHeight() & 0x7) != 0) {
         std.debug.panic(
-            "image asset '{s}' is {d}x{d}; 4bpp OBJ images must have dimensions divisible by 8",
-            .{ source_path, source.getWidth(), source.getHeight() },
+            "image asset '{s}' is {d}x{d}; {s} images must have dimensions divisible by 8",
+            .{ source_path, source.getWidth(), source.getHeight(), target },
         );
     }
+}
+
+fn normalBackgroundSizeName(width_tiles: u16, height_tiles: u16) []const u8 {
+    return switch (width_tiles) {
+        32 => switch (height_tiles) {
+            32 => "size_32x32",
+            64 => "size_32x64",
+            else => unreachable,
+        },
+        64 => switch (height_tiles) {
+            32 => "size_64x32",
+            64 => "size_64x64",
+            else => unreachable,
+        },
+        else => unreachable,
+    };
 }
 
 fn getSpriteSheetInfo(
@@ -569,4 +695,11 @@ test "nearest palette chooses the closest opaque color" {
     const palette = try explicitPalette4Bpp(&.{ ColorRgb555.blue, ColorRgb555.red });
     const mapper = PaletteMapper{ .colors = palette.colors[0..palette.count], .mode = .nearest };
     try std.testing.expectEqual(@as(u8, 2), mapper.nearestIndex(.rgb(30, 0, 1)));
+}
+
+test "background tilemap defaults preserve source tile order" {
+    const options: ImageAsset.TilemapOptions = .{};
+    try std.testing.expect(!options.dedupe);
+    try std.testing.expect(!options.dedupe_flips);
+    try std.testing.expectEqualStrings("size_64x32", normalBackgroundSizeName(64, 32));
 }

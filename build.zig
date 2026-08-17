@@ -10,10 +10,17 @@ pub const color = @import("build/color.zig");
 
 // Build all example ROMs.
 fn buildExamples(b: *GbaBuild) void {
-    _ = b.addExecutable(.{
+    var charBlock = b.addExecutable(.{
         .name = "charBlock",
         .root_source_file = b.path("examples/charBlock/charBlock.zig"),
     });
+    var charBlock_assets = charBlock.createAssetModule();
+    _ = charBlock_assets.addImage("ids", .{
+        .source_file = b.path("examples/charBlock/charBlock.png"),
+        .format = .bg_tilemap_4bpp,
+        .tilemap = .{ .dedupe = true, .dedupe_flips = true },
+    });
+    charBlock_assets.addImport("assets");
     _ = b.addExecutable(.{
         .name = "debugPrint",
         .root_source_file = b.path("examples/debugPrint/debugPrint.zig"),
