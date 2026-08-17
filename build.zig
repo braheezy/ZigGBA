@@ -142,40 +142,42 @@ fn buildExamples(b: *GbaBuild) void {
         .name = "mode4flip",
         .root_source_file = b.path("examples/mode4flip/mode4flip.zig"),
     });
-    const mode4flip_pal = color.PalettizerNaive.create(
-        b.allocator(),
-        256,
-    ) catch @panic("OOM");
-    var mode4flip_pal_step = mode4flip.addSaveQuantizedPalettizerPaletteStep(.{
-        .palettizer = mode4flip_pal.pal(),
-        .output_path = "examples/mode4flip/mode4flip.agp",
+    const mode4flip_palette = mode4flip.addMode4Palette(.{
+        .source_files = &.{
+            b.path("examples/mode4flip/front.bmp"),
+            b.path("examples/mode4flip/back.bmp"),
+        },
     });
-    const mode4flip_front_step = mode4flip.addConvertImageBitmap8BppStep(.{
-        .image_path = "examples/mode4flip/front.bmp",
-        .output_path = "examples/mode4flip/front.agi",
-        .options = .{ .palettizer = mode4flip_pal.pal() },
+    var mode4flip_assets = mode4flip.createAssetModule();
+    _ = mode4flip_assets.addImage("front", .{
+        .source_file = b.path("examples/mode4flip/front.bmp"),
+        .format = .mode4_bitmap_8bpp,
+        .palette = .{ .provided = mode4flip_palette.getOpaqueColors() },
     });
-    const mode4flip_back_step = mode4flip.addConvertImageBitmap8BppStep(.{
-        .image_path = "examples/mode4flip/back.bmp",
-        .output_path = "examples/mode4flip/back.agi",
-        .options = .{ .palettizer = mode4flip_pal.pal() },
+    _ = mode4flip_assets.addImage("back", .{
+        .source_file = b.path("examples/mode4flip/back.bmp"),
+        .format = .mode4_bitmap_8bpp,
+        .palette = .{ .provided = mode4flip_palette.getOpaqueColors() },
     });
-    mode4flip_pal_step.step.dependOn(&mode4flip_front_step.step);
-    mode4flip_pal_step.step.dependOn(&mode4flip_back_step.step);
+    mode4flip_assets.addImport("assets");
 
     var mode4fliplz = b.addExecutable(.{
         .name = "mode4fliplz",
         .root_source_file = b.path("examples/mode4fliplz/mode4fliplz.zig"),
     });
+    const mode4fliplz_pal = color.PalettizerNaive.create(
+        b.allocator(),
+        256,
+    ) catch @panic("OOM");
     var mode4fliplz_pal_step = mode4fliplz.addSaveQuantizedPalettizerPaletteStep(.{
-        .palettizer = mode4flip_pal.pal(),
+        .palettizer = mode4fliplz_pal.pal(),
         .output_path = "examples/mode4fliplz/mode4fliplz.agp",
     });
     const mode4fliplz_front_step = mode4fliplz.addConvertImageBitmap8BppStep(.{
         .image_path = "examples/mode4fliplz/front.bmp",
         .output_path = "examples/mode4fliplz/front.lz",
         .options = .{
-            .palettizer = mode4flip_pal.pal(),
+            .palettizer = mode4fliplz_pal.pal(),
             .compress_lz77 = true,
         },
     });
@@ -183,7 +185,7 @@ fn buildExamples(b: *GbaBuild) void {
         .image_path = "examples/mode4fliplz/back.bmp",
         .output_path = "examples/mode4fliplz/back.lz",
         .options = .{
-            .palettizer = mode4flip_pal.pal(),
+            .palettizer = mode4fliplz_pal.pal(),
             .compress_lz77 = true,
         },
     });

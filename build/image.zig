@@ -7,6 +7,7 @@ const Vec2U16 = @import("../src/gba/math/mod.zig").Vec2U16;
 
 pub const ImageAsset = @import("image_asset.zig").ImageAsset;
 pub const AssetModule = @import("image_asset.zig").AssetModule;
+pub const Mode4Palette = @import("image_asset.zig").Mode4Palette;
 
 pub const ConvertImageBitmap8BppOptions = @import("image_bitmap.zig").ConvertImageBitmap8BppOptions;
 pub const ConvertImageBitmap16BppOptions = @import("image_bitmap.zig").ConvertImageBitmap16BppOptions;

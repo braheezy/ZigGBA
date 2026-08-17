@@ -334,6 +334,14 @@ pub const GbaBuild = struct {
         return image.ImageAsset.create(self.b, options);
     }
 
+    /// Builds an exact shared palette for related Mode 4 frames.
+    pub fn addMode4Palette(
+        self: *GbaBuild,
+        options: image.Mode4Palette.Options,
+    ) *image.Mode4Palette {
+        return image.Mode4Palette.create(self.b, options);
+    }
+
     pub fn addConvertImageTiles4BppStep(
         self: GbaBuild,
         options: image.ConvertImageTiles4BppStep.Options,
@@ -414,6 +422,14 @@ pub const GbaExecutable = struct {
         const asset = image.ImageAsset.create(self.getOwner(), options);
         asset.addImport(self.step.root_module, import_name, self.gba_module);
         return asset;
+    }
+
+    /// Builds an exact shared palette for related Mode 4 frames.
+    pub fn addMode4Palette(
+        self: *GbaExecutable,
+        options: image.Mode4Palette.Options,
+    ) *image.Mode4Palette {
+        return image.Mode4Palette.create(self.getOwner(), options);
     }
 
     /// Creates a module that aggregates generated image assets.

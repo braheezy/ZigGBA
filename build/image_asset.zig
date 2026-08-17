@@ -14,25 +14,29 @@ pub const ImageAsset = struct {
     /// The module containing the typed image data. Add it to an executable
     /// module with `std.Build.Module.addImport`.
     module: *std.Build.Module,
-    /// Generated 4bpp tile data.
+    /// Generated tile data, or Mode 4 pixels when `pixels` is set.
     tiles: std.Build.LazyPath,
     /// Generated 16-color palette data in RGB555 format.
     palette: std.Build.LazyPath,
     /// Generated screenblock entries for tilemap formats, when applicable.
     map: ?std.Build.LazyPath = null,
+    /// Generated Mode 4 pixel data, when applicable.
+    pixels: ?std.Build.LazyPath = null,
 
     pub const Format = enum {
         /// 4bpp tiles for use with GBA OBJ (sprite) graphics.
         obj_tiles_4bpp,
         /// 4bpp tiles and a normal-background tilemap.
         bg_tilemap_4bpp,
+        /// 8bpp indexed pixels for a full-screen Mode 4 bitmap.
+        mode4_bitmap_8bpp,
     };
 
-    /// How opaque image colors are assigned to the 15 usable 4bpp palette
-    /// entries. Palette index zero is always reserved for transparent pixels.
+    /// How opaque image colors are assigned to target palette entries.
+    /// Palette index zero is always reserved for transparent pixels.
     pub const Palette = union(enum) {
         /// Extract the exact RGB555 colors used by the image. This is the
-        /// safe default and rejects images with more than 15 opaque colors.
+        /// safe default and rejects images that exceed the target's capacity.
         auto,
         /// Use these opaque RGB555 colors exactly. Every opaque source color
         /// must appear in this palette after RGB555 conversion.
@@ -68,7 +72,7 @@ pub const ImageAsset = struct {
         /// Output format. More image targets will be added alongside their
         /// corresponding typed runtime interfaces.
         format: Format = .obj_tiles_4bpp,
-        /// Palette handling for 4bpp formats.
+        /// Palette handling for paletted formats.
         palette: Palette = .auto,
         /// Optional sprite-frame grid. When omitted, the full image is one
         /// frame. Tiles remain in the source image's row-major tile order.
@@ -93,8 +97,8 @@ pub const ImageAsset = struct {
 
     /// Creates an image asset using the safe default palette policy: reserve
     /// index zero for transparency, extract all remaining colors exactly after
-    /// RGB555 conversion, and fail if the image needs more than 15 opaque
-    /// colors.
+    /// RGB555 conversion, and fail if the image exceeds the target palette
+    /// capacity.
     pub fn create(b: *std.Build, options: Options) *ImageAsset {
         const source_path = switch (options.source_file) {
             .generated => std.debug.panic(
@@ -116,7 +120,65 @@ pub const ImageAsset = struct {
         return switch (options.format) {
             .obj_tiles_4bpp => createObjTiles4Bpp(b, source_path, source, options),
             .bg_tilemap_4bpp => createBackgroundTilemap4Bpp(b, source_path, source, options),
+            .mode4_bitmap_8bpp => createMode4Bitmap8Bpp(b, source_path, source, options),
         };
+    }
+};
+
+/// An exact shared palette for related Mode 4 frames.
+///
+/// Construct this from every frame that will share a Mode 4 palette, then
+/// supply `getOpaqueColors()` through `ImageAsset.Palette.provided` for each
+/// frame. This keeps palette indices stable across flips and animations.
+pub const Mode4Palette = struct {
+    colors: [256]ColorRgb555,
+    color_count: usize,
+
+    pub const Options = struct {
+        /// All images that will use this palette. They must be available while
+        /// `build.zig` is evaluated.
+        source_files: []const std.Build.LazyPath,
+    };
+
+    pub fn create(b: *std.Build, options: Options) *Mode4Palette {
+        if (options.source_files.len == 0) {
+            @panic("Mode4Palette requires at least one source image");
+        }
+        var palette: [256]ColorRgb555 = @splat(.black);
+        var count: usize = 1;
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
+
+        for (options.source_files) |source_file| {
+            const source_path = switch (source_file) {
+                .generated => std.debug.panic(
+                    "generated image inputs are not supported by Mode4Palette yet",
+                    .{},
+                ),
+                else => source_file.getPath(b),
+            };
+            var source = image.Image.fromFilePath(b.allocator, threaded.io(), source_path) catch |err| {
+                std.debug.panic("unable to load Mode 4 palette source '{s}': {s}", .{ source_path, @errorName(err) });
+            };
+            defer source.deinit(b.allocator);
+
+            appendImagePalette8Bpp(source, &palette, &count) catch |err| switch (err) {
+                error.TooManyColors => std.debug.panic(
+                    "Mode 4 palette sources need more than 255 opaque RGB555 colors",
+                    .{},
+                ),
+                else => unreachable,
+            };
+        }
+
+        const result = b.allocator.create(Mode4Palette) catch @panic("OOM");
+        result.* = .{ .colors = palette, .color_count = count };
+        return result;
+    }
+
+    /// Returns the opaque entries for use with `.palette = .{ .provided = ... }`.
+    pub fn getOpaqueColors(self: *const Mode4Palette) []const ColorRgb555 {
+        return self.colors[1..self.color_count];
     }
 };
 
@@ -373,6 +435,69 @@ fn createBackgroundTilemap4Bpp(
     return asset;
 }
 
+fn createMode4Bitmap8Bpp(
+    b: *std.Build,
+    source_path: []const u8,
+    source: image.Image,
+    options: ImageAsset.Options,
+) *ImageAsset {
+    if (source.getWidth() != 240 or source.getHeight() != 160) {
+        std.debug.panic(
+            "Mode 4 image asset '{s}' is {d}x{d}; Mode 4 assets must be exactly 240x160 pixels",
+            .{ source_path, source.getWidth(), source.getHeight() },
+        );
+    }
+
+    const palette = preparePalette8BppOrPanic(source_path, source, options.palette);
+    var palette_adapter = PaletteMapper{
+        .colors = palette.colors[0..palette.count],
+        .mode = switch (options.palette) {
+            .nearest => .nearest,
+            else => .exact,
+        },
+    };
+    const output = image.convertImageBitmap8Bpp(
+        b.allocator,
+        source,
+        .{ .palettizer = palette_adapter.palettizer() },
+    ) catch |err| {
+        std.debug.panic("unable to convert image asset '{s}' to a Mode 4 bitmap: {s}", .{
+            source_path,
+            @errorName(err),
+        });
+    };
+    defer b.allocator.free(output.data);
+
+    const write_files = b.addWriteFiles();
+    const pixels_path = write_files.add("pixels.bin", output.data);
+    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&palette.colors));
+    const module_path = write_files.add("asset.zig", b.fmt(
+        \\const gba = @import("gba");
+        \\pub const width: u16 = {d};
+        \\pub const height: u16 = {d};
+        \\pub const pixel_count: usize = {d};
+        \\pub const palette_color_count: usize = {d};
+        \\const pixels_data align(4) = @embedFile("pixels.bin").*;
+        \\const palette_data align(2) = @embedFile("palette.bin").*;
+        \\pub const pixels: *align(4) const [pixel_count]u8 = @ptrCast(&pixels_data);
+        \\pub const palette: *align(2) const [256]gba.ColorRgb555 = @ptrCast(&palette_data);
+    , .{
+        output.width,
+        output.height,
+        output.data.len,
+        palette.count,
+    }));
+    const module = b.createModule(.{ .root_source_file = module_path });
+    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
+    asset.* = .{
+        .module = module,
+        .tiles = pixels_path,
+        .palette = palette_path,
+        .pixels = pixels_path,
+    };
+    return asset;
+}
+
 fn preparePaletteOrPanic(
     source_path: []const u8,
     source: image.Image,
@@ -404,6 +529,37 @@ fn preparePaletteOrPanic(
     };
 }
 
+fn preparePalette8BppOrPanic(
+    source_path: []const u8,
+    source: image.Image,
+    policy: ImageAsset.Palette,
+) Palette8Bpp {
+    return preparePalette8Bpp(source, policy) catch |err| switch (err) {
+        error.TooManyColors => std.debug.panic(
+            "Mode 4 image asset '{s}' needs more than 255 opaque RGB555 colors; " ++
+                "set the palette policy to nearest to opt into lossy mapping",
+            .{source_path},
+        ),
+        error.EmptyPalette => std.debug.panic(
+            "Mode 4 image asset '{s}' has an empty explicit palette; provide one to 255 opaque colors",
+            .{source_path},
+        ),
+        error.PaletteTooLarge => std.debug.panic(
+            "Mode 4 image asset '{s}' has more than 255 explicit opaque palette colors",
+            .{source_path},
+        ),
+        error.DuplicatePaletteColor => std.debug.panic(
+            "Mode 4 image asset '{s}' has duplicate explicit RGB555 palette colors",
+            .{source_path},
+        ),
+        error.ColorNotInPalette => std.debug.panic(
+            "Mode 4 image asset '{s}' uses an opaque color not present in its explicit RGB555 palette; " ++
+                "use the nearest palette policy to opt into lossy mapping",
+            .{source_path},
+        ),
+    };
+}
+
 const PaletteError = error{
     TooManyColors,
     EmptyPalette,
@@ -414,6 +570,11 @@ const PaletteError = error{
 
 const Palette4Bpp = struct {
     colors: [16]ColorRgb555,
+    count: usize,
+};
+
+const Palette8Bpp = struct {
+    colors: [256]ColorRgb555,
     count: usize,
 };
 
@@ -455,6 +616,32 @@ fn appendPaletteColor(
     count.* += 1;
 }
 
+fn appendImagePalette8Bpp(
+    source: image.Image,
+    palette: *[256]ColorRgb555,
+    count: *usize,
+) PaletteError!void {
+    for (0..source.getHeight()) |y| {
+        for (0..source.getWidth()) |x| {
+            try appendPaletteColor8Bpp(palette, count, source.getPixelColor(@intCast(x), @intCast(y)));
+        }
+    }
+}
+
+fn appendPaletteColor8Bpp(
+    palette: *[256]ColorRgb555,
+    count: *usize,
+    source_color: color.ColorRgba32,
+) PaletteError!void {
+    if (source_color.a < 0xff) return;
+
+    const converted = color.convertColorDepthLinear(source_color);
+    if (paletteContains(palette[1..count.*], converted)) return;
+    if (count.* == palette.len) return error.TooManyColors;
+    palette[count.*] = converted;
+    count.* += 1;
+}
+
 fn preparePalette4Bpp(source: image.Image, policy: ImageAsset.Palette) PaletteError!Palette4Bpp {
     return switch (policy) {
         .auto => extractPalette4Bpp(source),
@@ -465,6 +652,39 @@ fn preparePalette4Bpp(source: image.Image, policy: ImageAsset.Palette) PaletteEr
         },
         .nearest => |colors| explicitPalette4Bpp(colors),
     };
+}
+
+fn preparePalette8Bpp(source: image.Image, policy: ImageAsset.Palette) PaletteError!Palette8Bpp {
+    return switch (policy) {
+        .auto => extractPalette8Bpp(source),
+        .provided => |colors| blk: {
+            const palette = try explicitPalette8Bpp(colors);
+            try validateExactPalette(source, palette.colors[0..palette.count]);
+            break :blk palette;
+        },
+        .nearest => |colors| explicitPalette8Bpp(colors),
+    };
+}
+
+fn extractPalette8Bpp(source: image.Image) PaletteError!Palette8Bpp {
+    var palette: [256]ColorRgb555 = @splat(.black);
+    var count: usize = 1;
+    try appendImagePalette8Bpp(source, &palette, &count);
+    return .{ .colors = palette, .count = count };
+}
+
+fn explicitPalette8Bpp(opaque_colors: []const ColorRgb555) PaletteError!Palette8Bpp {
+    if (opaque_colors.len == 0) return error.EmptyPalette;
+    if (opaque_colors.len > 255) return error.PaletteTooLarge;
+
+    var palette: [256]ColorRgb555 = @splat(.black);
+    for (opaque_colors, 1..) |palette_color, index| {
+        if (paletteContains(palette[1..index], palette_color)) {
+            return error.DuplicatePaletteColor;
+        }
+        palette[index] = palette_color;
+    }
+    return .{ .colors = palette, .count = opaque_colors.len + 1 };
 }
 
 fn explicitPalette4Bpp(opaque_colors: []const ColorRgb555) PaletteError!Palette4Bpp {
@@ -702,4 +922,13 @@ test "background tilemap defaults preserve source tile order" {
     try std.testing.expect(!options.dedupe);
     try std.testing.expect(!options.dedupe_flips);
     try std.testing.expectEqualStrings("size_64x32", normalBackgroundSizeName(64, 32));
+}
+
+test "Mode 4 explicit palettes support more than 4bpp palettes" {
+    const palette = try explicitPalette8Bpp(&.{ ColorRgb555.red, ColorRgb555.green, ColorRgb555.blue });
+    try std.testing.expectEqual(@as(usize, 4), palette.count);
+    try validateExactPaletteColors(
+        &.{ color.ColorRgba32.red, color.ColorRgba32.green, color.ColorRgba32.blue },
+        palette.colors[0..palette.count],
+    );
 }

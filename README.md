@@ -137,6 +137,44 @@ bg0_map.copyFrom(level.map[0..]);
 Source-order tiles are the default. Enable `dedupe` and `dedupe_flips` only
 when smaller tile data is worth the resulting non-linear tile indices.
 
+### Mode 4 bitmaps
+
+`mode4_bitmap_8bpp` produces a full 240×160 indexed bitmap and a 256-color
+background palette. It uses the same exact-by-default palette policy as tile
+assets:
+
+```zig
+_ = assets.addImage("title", .{
+    .source_file = b.path("assets/title.png"),
+    .format = .mode4_bitmap_8bpp,
+});
+```
+
+Load it into either Mode 4 buffer with ordinary typed data:
+
+```zig
+const title = assets.title;
+gba.mem.memcpy(gba.display.getMode4Surface(0).data, title.pixels, title.pixel_count);
+gba.display.memcpyBackgroundPalette(0, title.palette[0..]);
+```
+
+Frames that will be displayed with one palette should use a shared palette
+collector before their image assets are created:
+
+```zig
+const palette = exe.addMode4Palette(.{
+    .source_files = &.{
+        b.path("assets/front.png"),
+        b.path("assets/back.png"),
+    },
+});
+_ = assets.addImage("front", .{
+    .source_file = b.path("assets/front.png"),
+    .format = .mode4_bitmap_8bpp,
+    .palette = .{ .provided = palette.getOpaqueColors() },
+});
+```
+
 ## Fork
 
 This fork has too many changes to document. The highlights are:
