@@ -125,19 +125,11 @@ fn buildExamples(b: *GbaBuild) void {
         .name = "jesuMusic",
         .root_source_file = b.path("examples/jesuMusic/jesuMusic.zig"),
     });
-    const jesuMusic_pal = color.PalettizerNearest.create(
-        b.allocator(),
-        &[_]color.ColorRgba32{
-            .transparent,
-            .white,
-            .black,
-        },
-    ) catch @panic("OOM");
-    _ = jesuMusic.addConvertImageTiles4BppStep(.{
-        .image_path = "examples/jesuMusic/charset.png",
-        .output_path = "examples/jesuMusic/charset.bin",
-        .options = .{ .palettizer = jesuMusic_pal.pal() },
+    var jesuMusic_assets = jesuMusic.createAssetModule();
+    _ = jesuMusic_assets.addImage("charset", .{
+        .source_file = b.path("examples/jesuMusic/charset.png"),
     });
+    jesuMusic_assets.addImport("assets");
 
     var mode4flip = b.addExecutable(.{
         .name = "mode4flip",
@@ -208,11 +200,11 @@ pub fn build(std_b: *std.Build) void {
     const host_target = std_b.standardTargetOptions(.{});
     const optimize = std_b.standardOptimizeOption(.{});
 
-    // Run tests from a common source root so internal modules can import the
-    // shared SDK façade without escaping the module path.
+    // Run tests from the repository root so SDK and host build helpers can
+    // share one test target without escaping the module path.
     const test_sdk = std_b.addRunArtifact(std_b.addTest(.{
         .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/test.zig"),
+            .root_source_file = std_b.path("test.zig"),
             .target = host_target,
             .optimize = optimize,
         }),

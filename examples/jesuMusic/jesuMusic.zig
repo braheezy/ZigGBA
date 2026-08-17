@@ -1,9 +1,7 @@
 const gba = @import("gba");
+const assets = @import("assets");
 
 export const gameHeader linksection(".gbaheader") = gba.Header.init("JESUMUSIC", "AJME", "00", 0);
-
-/// File contains 4bpp tile image data.
-const charset_data align(4) = @embedFile("charset.bin").*;
 
 const hex_digits: [16]u8 = .{
     '0', '1', '2', '3', '4', '5', '6', '7',
@@ -796,7 +794,7 @@ pub export fn main() void {
     gba.display.bg_palette.banks[1][2] = .rgb(19, 19, 19);
     gba.display.bg_palette.banks[2][1] = .rgb(1, 0, 25);
     gba.display.bg_palette.banks[2][2] = .rgb(31, 31, 31);
-    gba.display.memcpyBackgroundTiles4Bpp(0, @ptrCast(&charset_data));
+    gba.display.memcpyBackgroundTiles4Bpp(0, assets.charset.tiles[0..]);
     gba.display.ctrl.* = gba.display.Control{
         .bg0 = true,
     };

@@ -5,6 +5,9 @@ const ColorRgba32 = @import("color.zig").ColorRgba32;
 const RectU16 = @import("../src/gba/math/mod.zig").RectU16;
 const Vec2U16 = @import("../src/gba/math/mod.zig").Vec2U16;
 
+pub const ImageAsset = @import("image_asset.zig").ImageAsset;
+pub const AssetModule = @import("image_asset.zig").AssetModule;
+
 pub const ConvertImageBitmap8BppOptions = @import("image_bitmap.zig").ConvertImageBitmap8BppOptions;
 pub const ConvertImageBitmap16BppOptions = @import("image_bitmap.zig").ConvertImageBitmap16BppOptions;
 pub const ConvertImageBitmap8BppOutput = @import("image_bitmap.zig").ConvertImageBitmap8BppOutput;

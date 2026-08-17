@@ -54,6 +54,56 @@ pub export fn main() void {
 }
 ```
 
+## Images
+
+ZigGBA includes an experimental typed image-asset path for common formats.
+It generates a module instead of requiring the game to manage generated
+binary paths:
+
+```zig
+const exe = gba_b.addExecutable(.{
+    .name = "game",
+    .root_source_file = b.path("src/main.zig"),
+});
+var assets = exe.createAssetModule();
+_ = assets.addImage("player", .{
+    .source_file = b.path("assets/player.png"),
+});
+assets.addImport("assets");
+```
+
+The game can then import the asset as ordinary Zig code:
+
+```zig
+const assets = @import("assets");
+const player = assets.player;
+
+gba.display.memcpyObjectTiles4Bpp(0, player.tiles[0..]);
+gba.display.memcpyObjectPalette(0, player.palette[0..]);
+```
+
+The current default target is 4bpp OBJ tiles. It reserves palette index 0
+for transparent pixels, converts colors to RGB555, and reports an error when
+more than 15 opaque colors are required.
+
+Projects that need a locked palette or intentionally lossy conversion can opt
+in explicitly. A sprite-sheet grid supplies frame metadata without changing
+the source image's row-major tile order:
+
+```zig
+_ = assets.addImage("hero", .{
+    .source_file = b.path("assets/hero.png"),
+    .palette = .{ .provided = &.{ .white, .red, .blue } },
+    .sprite_sheet = .{ .frame_width = 16, .frame_height = 16 },
+});
+// Use `.palette = .{ .nearest = ... }` only when nearest-color mapping is
+// desired. Generated assets expose `frame_count`, `frames_x`, `frames_y`,
+// and `frameTileIndex` for the source-order tile layout.
+```
+
+Lower-level image converters remain available for project-specific processing
+and formats not yet covered by this high-level API.
+
 ## Fork
 
 This fork has too many changes to document. The highlights are:
