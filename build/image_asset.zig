@@ -137,8 +137,8 @@ pub const ImageAsset = struct {
     };
 
     pub const Options = struct {
-        /// Source image to convert. It must be available when `build.zig` is
-        /// evaluated; generated images are not supported by this eager path.
+        /// Source image to convert. Zig watches this file and reruns the
+        /// conversion when it changes. Generated images are not supported.
         source_file: std.Build.LazyPath,
         /// Output format. More image targets will be added alongside their
         /// corresponding typed runtime interfaces.
@@ -180,41 +180,120 @@ pub const ImageAsset = struct {
     /// capacity.
     pub fn create(b: *std.Build, options: Options) *ImageAsset {
         validateOutputTransforms(options);
-        const source_path = switch (options.source_file) {
-            .generated => std.debug.panic(
-                "generated image inputs are not supported by ImageAsset yet; " ++
-                    "use the lower-level image converters for build-step inputs",
-                .{},
-            ),
-            else => options.source_file.getPath(b),
-        };
+        if (options.source_file == .generated) {
+            @panic("generated image inputs are not supported by ImageAsset; use a regular source file");
+        }
 
-        var threaded: std.Io.Threaded = .init_single_threaded;
-        defer threaded.deinit();
-
-        var source = image.Image.fromFilePath(b.allocator, threaded.io(), source_path) catch |err| {
-            std.debug.panic("unable to load image asset '{s}': {s}", .{ source_path, @errorName(err) });
+        const conversion = ImageAssetStep.create(b, options);
+        const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
+        const transformed_name = outputFileName(b, "tiles.bin", options.transforms.tiles);
+        asset.* = .{
+            .module = b.createModule(.{ .root_source_file = conversion.outputFile("asset.zig") }),
+            // Mode 4 calls its primary output `pixels`, but `tiles` historically
+            // aliases that path for callers that inspect ImageAsset directly.
+            .tiles = if (options.format == .mode4_bitmap_8bpp)
+                conversion.outputFile(outputFileName(b, "pixels.bin", options.transforms.pixels))
+            else
+                conversion.outputFile(transformed_name),
+            .palette = conversion.outputFile(outputFileName(b, "palette.bin", options.transforms.palette)),
+            .map = switch (options.format) {
+                .bg_tilemap_4bpp,
+                .bg_tilemap_4bpp_multi_bank,
+                .bg_tilemap_8bpp,
+                .affine_bg_tilemap_8bpp,
+                => conversion.outputFile(outputFileName(b, "map.bin", options.transforms.map)),
+                else => null,
+            },
+            .pixels = if (options.format == .mode4_bitmap_8bpp)
+                conversion.outputFile(outputFileName(b, "pixels.bin", options.transforms.pixels))
+            else
+                null,
         };
-        defer source.deinit(b.allocator);
-
-        return switch (options.format) {
-            .obj_tiles_4bpp => createObjTiles4Bpp(b, source_path, source, options),
-            .bg_tilemap_4bpp => createBackgroundTilemap4Bpp(b, source_path, source, options),
-            .bg_tilemap_4bpp_multi_bank => createMultiBankBackgroundTilemap4Bpp(b, source_path, source, options),
-            .bg_tilemap_8bpp => createBackgroundTilemap8Bpp(b, source_path, source, options),
-            .affine_bg_tilemap_8bpp => createAffineBackgroundTilemap8Bpp(b, source_path, source, options),
-            .mode4_bitmap_8bpp => createMode4Bitmap8Bpp(b, source_path, source, options),
-        };
+        return asset;
     }
 };
 
 const AssetOutput = struct {
-    path: std.Build.LazyPath,
     file_name: []const u8,
     raw_len: usize,
     compressed_len: usize,
     transform: ?ImageAsset.OutputTransform,
 };
+
+/// Converts one source image during the make phase. Keeping image I/O out of
+/// build-graph construction means Zig can watch the source image and rerun
+/// this step when an artist changes it.
+const ImageAssetStep = struct {
+    step: std.Build.Step,
+    source_file: std.Build.LazyPath,
+    options: ImageAsset.Options,
+    generated_dir: std.Build.GeneratedFile,
+
+    fn create(b: *std.Build, options: ImageAsset.Options) *ImageAssetStep {
+        const result = b.allocator.create(ImageAssetStep) catch @panic("OOM");
+        result.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .owner = b,
+                .makeFn = make,
+                .name = b.fmt("convert image asset {s}", .{options.source_file.getDisplayName()}),
+            }),
+            .source_file = options.source_file,
+            .options = dupeImageAssetOptions(b, options),
+            .generated_dir = .{ .step = &result.step },
+        };
+        return result;
+    }
+
+    fn outputFile(self: *ImageAssetStep, name: []const u8) std.Build.LazyPath {
+        return .{ .generated = .{ .file = &self.generated_dir, .sub_path = name } };
+    }
+
+    fn make(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) !void {
+        const self: *ImageAssetStep = @fieldParentPtr("step", step);
+        const b = step.owner;
+        try step.singleUnchangingWatchInput(self.source_file);
+
+        const source_path_cache = try self.source_file.getPath4(b, step);
+        const source_path = try source_path_cache.toString(b.allocator);
+        defer b.allocator.free(source_path);
+
+        var threaded: std.Io.Threaded = .init_single_threaded;
+        defer threaded.deinit();
+        var source = image.Image.fromFilePath(b.allocator, threaded.io(), source_path) catch |err| {
+            return step.fail("unable to load image asset '{s}': {s}", .{ source_path, @errorName(err) });
+        };
+        defer source.deinit(b.allocator);
+
+        var writer = AssetWriter.init(b);
+        defer writer.deinit();
+        switch (self.options.format) {
+            .obj_tiles_4bpp => createObjTiles4Bpp(b, &writer, source_path, source, self.options),
+            .bg_tilemap_4bpp => createBackgroundTilemap4Bpp(b, &writer, source_path, source, self.options),
+            .bg_tilemap_4bpp_multi_bank => createMultiBankBackgroundTilemap4Bpp(b, &writer, source_path, source, self.options),
+            .bg_tilemap_8bpp => createBackgroundTilemap8Bpp(b, &writer, source_path, source, self.options),
+            .affine_bg_tilemap_8bpp => createAffineBackgroundTilemap8Bpp(b, &writer, source_path, source, self.options),
+            .mode4_bitmap_8bpp => createMode4Bitmap8Bpp(b, &writer, source_path, source, self.options),
+        }
+        try writer.writeToCache(step, source_path_cache, &self.generated_dir, make_options.progress_node);
+    }
+};
+
+/// Image conversion now happens after `build.zig` returns, so copy caller
+/// slices that may otherwise refer to temporary build-function storage.
+fn dupeImageAssetOptions(b: *std.Build, options: ImageAsset.Options) ImageAsset.Options {
+    var owned = options;
+    owned.palette = switch (options.palette) {
+        .auto => .auto,
+        .provided => |colors| .{ .provided = b.allocator.dupe(ColorRgb555, colors) catch @panic("OOM") },
+        .nearest => |colors| .{ .nearest = b.allocator.dupe(ColorRgb555, colors) catch @panic("OOM") },
+    };
+    owned.multi_bank_tilemap_4bpp.palette_banks = switch (options.multi_bank_tilemap_4bpp.palette_banks) {
+        .auto => .auto,
+        .provided => |banks| .{ .provided = b.allocator.dupe([16]ColorRgb555, banks) catch @panic("OOM") },
+    };
+    return owned;
+}
 
 fn validateOutputTransforms(options: ImageAsset.Options) void {
     const transforms = options.transforms;
@@ -243,7 +322,7 @@ fn rejectTransform(name: []const u8, transform: ?ImageAsset.OutputTransform) voi
 
 fn writeAssetOutput(
     b: *std.Build,
-    write_files: *std.Build.Step.WriteFile,
+    writer: *AssetWriter,
     raw_file_name: []const u8,
     raw_data: []const u8,
     transform: ?ImageAsset.OutputTransform,
@@ -256,8 +335,8 @@ fn writeAssetOutput(
                 };
                 defer b.allocator.free(data);
                 const file_name = b.fmt("{s}.lz77", .{std.fs.path.stem(raw_file_name)});
+                writer.add(file_name, data);
                 return .{
-                    .path = write_files.add(file_name, data),
                     .file_name = file_name,
                     .raw_len = raw_data.len,
                     .compressed_len = data.len,
@@ -266,14 +345,89 @@ fn writeAssetOutput(
             },
         }
     }
+    writer.add(raw_file_name, raw_data);
     return .{
-        .path = write_files.add(raw_file_name, raw_data),
         .file_name = raw_file_name,
         .raw_len = raw_data.len,
         .compressed_len = raw_data.len,
         .transform = null,
     };
 }
+
+fn outputFileName(
+    b: *std.Build,
+    raw_file_name: []const u8,
+    transform: ?ImageAsset.OutputTransform,
+) []const u8 {
+    return if (transform) |selected| switch (selected) {
+        .lz77 => b.fmt("{s}.lz77", .{std.fs.path.stem(raw_file_name)}),
+    } else raw_file_name;
+}
+
+const AssetWriter = struct {
+    const File = struct {
+        name: []const u8,
+        data: []const u8,
+    };
+
+    b: *std.Build,
+    files: std.ArrayList(File) = .empty,
+
+    fn init(b: *std.Build) AssetWriter {
+        return .{ .b = b };
+    }
+
+    fn deinit(self: *AssetWriter) void {
+        for (self.files.items) |file| self.b.allocator.free(file.data);
+        self.files.deinit(self.b.allocator);
+    }
+
+    fn add(self: *AssetWriter, name: []const u8, data: []const u8) void {
+        self.files.append(self.b.allocator, .{
+            .name = name,
+            .data = self.b.allocator.dupe(u8, data) catch @panic("OOM"),
+        }) catch @panic("OOM");
+    }
+
+    fn writeToCache(
+        self: *const AssetWriter,
+        step: *std.Build.Step,
+        source_path: std.Build.Cache.Path,
+        generated_dir: *std.Build.GeneratedFile,
+        progress_node: std.Progress.Node,
+    ) !void {
+        const b = self.b;
+        var manifest = b.graph.cache.obtain();
+        defer manifest.deinit();
+        manifest.hash.add(@as(u32, 0x4f0d8c71));
+        _ = try manifest.addFilePath(source_path, null);
+        for (self.files.items) |file| {
+            manifest.hash.addBytes(file.name);
+            manifest.hash.addBytes(file.data);
+        }
+
+        if (try step.cacheHit(&manifest)) {
+            const digest = manifest.final();
+            generated_dir.path = try b.cache_root.join(b.allocator, &.{ "o", &digest });
+            return;
+        }
+
+        const digest = manifest.final();
+        try b.cache_root.handle.createDirPath(b.graph.io, b.pathJoin(&.{ "o", &digest }));
+        for (self.files.items) |file| {
+            const sub_path = b.pathJoin(&.{ "o", &digest, file.name });
+            b.cache_root.handle.writeFile(b.graph.io, .{ .sub_path = sub_path, .data = file.data }) catch |err| {
+                return step.fail("unable to write generated image asset '{s}': {s}", .{
+                    file.name,
+                    @errorName(err),
+                });
+            };
+        }
+        generated_dir.path = try b.cache_root.join(b.allocator, &.{ "o", &digest });
+        try manifest.writeManifest();
+        _ = progress_node;
+    }
+};
 
 fn assetOutputDeclaration(
     b: *std.Build,
@@ -443,10 +597,11 @@ pub const AssetModule = struct {
 
 fn createObjTiles4Bpp(
     b: *std.Build,
+    writer: *AssetWriter,
     source_path: []const u8,
     source: image.Image,
     options: ImageAsset.Options,
-) *ImageAsset {
+) void {
     validate4BppImage(source_path, source, "4bpp OBJ");
     const frames = getSpriteSheetInfo(source_path, source, options.sprite_sheet);
 
@@ -470,12 +625,11 @@ fn createObjTiles4Bpp(
     };
     defer b.allocator.free(tiles);
 
-    const write_files = b.addWriteFiles();
-    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(tiles), options.transforms.tiles);
-    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
+    const tiles_output = writeAssetOutput(b, writer, "tiles.bin", std.mem.sliceAsBytes(tiles), options.transforms.tiles);
+    const palette_output = writeAssetOutput(b, writer, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
     const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile4Bpp", tiles.len, 4);
     const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 16, 2);
-    const module_path = write_files.add("asset.zig", b.fmt(
+    writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
         \\pub const height: u16 = {d};
@@ -517,22 +671,15 @@ fn createObjTiles4Bpp(
         tiles_declaration,
         palette_declaration,
     }));
-    const module = b.createModule(.{ .root_source_file = module_path });
-    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
-    asset.* = .{
-        .module = module,
-        .tiles = tiles_output.path,
-        .palette = palette_output.path,
-    };
-    return asset;
 }
 
 fn createBackgroundTilemap4Bpp(
     b: *std.Build,
+    writer: *AssetWriter,
     source_path: []const u8,
     source: image.Image,
     options: ImageAsset.Options,
-) *ImageAsset {
+) void {
     validate4BppImage(source_path, source, "4bpp background tilemap");
     if (source.getWidth() > 512 or source.getHeight() > 512) {
         std.debug.panic(
@@ -566,14 +713,13 @@ fn createBackgroundTilemap4Bpp(
     };
     defer output.deinit(b.allocator);
 
-    const write_files = b.addWriteFiles();
-    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(output.tiles), options.transforms.tiles);
-    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
-    const map_output = writeAssetOutput(b, write_files, "map.bin", std.mem.sliceAsBytes(output.map), options.transforms.map);
+    const tiles_output = writeAssetOutput(b, writer, "tiles.bin", std.mem.sliceAsBytes(output.tiles), options.transforms.tiles);
+    const palette_output = writeAssetOutput(b, writer, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
+    const map_output = writeAssetOutput(b, writer, "map.bin", std.mem.sliceAsBytes(output.map), options.transforms.map);
     const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile4Bpp", output.tiles.len, 4);
     const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 16, 2);
     const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.Entry", output.map.len, 2);
-    const module_path = write_files.add("asset.zig", b.fmt(
+    writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
         \\pub const height: u16 = {d};
@@ -603,23 +749,15 @@ fn createBackgroundTilemap4Bpp(
         palette_declaration,
         map_declaration,
     }));
-    const module = b.createModule(.{ .root_source_file = module_path });
-    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
-    asset.* = .{
-        .module = module,
-        .tiles = tiles_output.path,
-        .palette = palette_output.path,
-        .map = map_output.path,
-    };
-    return asset;
 }
 
 fn createMultiBankBackgroundTilemap4Bpp(
     b: *std.Build,
+    writer: *AssetWriter,
     source_path: []const u8,
     source: image.Image,
     options: ImageAsset.Options,
-) *ImageAsset {
+) void {
     validate4BppImage(source_path, source, "multi-bank 4bpp background");
     if (source.getWidth() > 512 or source.getHeight() > 512) {
         std.debug.panic(
@@ -663,14 +801,13 @@ fn createMultiBankBackgroundTilemap4Bpp(
     };
     defer output.deinit(b.allocator);
 
-    const write_files = b.addWriteFiles();
-    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(output.tiles), options.transforms.tiles);
-    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&output.palette), options.transforms.palette);
-    const map_output = writeAssetOutput(b, write_files, "map.bin", std.mem.sliceAsBytes(output.map), options.transforms.map);
+    const tiles_output = writeAssetOutput(b, writer, "tiles.bin", std.mem.sliceAsBytes(output.tiles), options.transforms.tiles);
+    const palette_output = writeAssetOutput(b, writer, "palette.bin", std.mem.sliceAsBytes(&output.palette), options.transforms.palette);
+    const map_output = writeAssetOutput(b, writer, "map.bin", std.mem.sliceAsBytes(output.map), options.transforms.map);
     const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile4Bpp", output.tiles.len, 4);
     const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 256, 2);
     const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.Entry", output.map.len, 2);
-    const module_path = write_files.add("asset.zig", b.fmt(
+    writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
         \\pub const height: u16 = {d};
@@ -700,18 +837,15 @@ fn createMultiBankBackgroundTilemap4Bpp(
         palette_declaration,
         map_declaration,
     }));
-    const module = b.createModule(.{ .root_source_file = module_path });
-    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
-    asset.* = .{ .module = module, .tiles = tiles_output.path, .palette = palette_output.path, .map = map_output.path };
-    return asset;
 }
 
 fn createBackgroundTilemap8Bpp(
     b: *std.Build,
+    writer: *AssetWriter,
     source_path: []const u8,
     source: image.Image,
     options: ImageAsset.Options,
-) *ImageAsset {
+) void {
     validate8BppTilemapImage(source_path, source, "normal");
     if (source.getWidth() > 512 or source.getHeight() > 512) {
         std.debug.panic(
@@ -720,7 +854,7 @@ fn createBackgroundTilemap8Bpp(
         );
     }
 
-    const palette = preparePalette8BppOrPanic(source_path, source, options.palette);
+    const palette = preparePalette8BppOrPanic(source_path, source, options.palette, "normal 8bpp background");
     var palette_adapter = PaletteMapper{
         .colors = palette.colors[0..palette.count],
         .mode = switch (options.palette) {
@@ -740,24 +874,24 @@ fn createBackgroundTilemap8Bpp(
     };
     defer output.deinit(b.allocator);
 
-    return createNormal8BppModule(b, source, palette, output, options.transforms);
+    createNormal8BppModule(b, writer, source, palette, output, options.transforms);
 }
 
 fn createNormal8BppModule(
     b: *std.Build,
+    writer: *AssetWriter,
     source: image.Image,
     palette: Palette8Bpp,
     output: image.ConvertImageNormalTilemap8BppOutput,
     transforms: ImageAsset.OutputTransforms,
-) *ImageAsset {
-    const write_files = b.addWriteFiles();
-    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(output.tiles), transforms.tiles);
-    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), transforms.palette);
-    const map_output = writeAssetOutput(b, write_files, "map.bin", std.mem.sliceAsBytes(output.map), transforms.map);
+) void {
+    const tiles_output = writeAssetOutput(b, writer, "tiles.bin", std.mem.sliceAsBytes(output.tiles), transforms.tiles);
+    const palette_output = writeAssetOutput(b, writer, "palette.bin", std.mem.sliceAsBytes(&palette.colors), transforms.palette);
+    const map_output = writeAssetOutput(b, writer, "map.bin", std.mem.sliceAsBytes(output.map), transforms.map);
     const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile8Bpp", output.tiles.len, 4);
     const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 256, 2);
     const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.Entry", output.map.len, 2);
-    const module_path = write_files.add("asset.zig", b.fmt(
+    writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
         \\pub const height: u16 = {d};
@@ -787,18 +921,15 @@ fn createNormal8BppModule(
         palette_declaration,
         map_declaration,
     }));
-    const module = b.createModule(.{ .root_source_file = module_path });
-    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
-    asset.* = .{ .module = module, .tiles = tiles_output.path, .palette = palette_output.path, .map = map_output.path };
-    return asset;
 }
 
 fn createAffineBackgroundTilemap8Bpp(
     b: *std.Build,
+    writer: *AssetWriter,
     source_path: []const u8,
     source: image.Image,
     options: ImageAsset.Options,
-) *ImageAsset {
+) void {
     validate8BppTilemapImage(source_path, source, "affine");
     const affine_size = options.affine_tilemap_8bpp.size orelse affineSizeForSource(source_path, source);
     const map_dimension = affineDimension(affine_size);
@@ -809,7 +940,7 @@ fn createAffineBackgroundTilemap8Bpp(
         );
     }
 
-    const palette = preparePalette8BppOrPanic(source_path, source, options.palette);
+    const palette = preparePalette8BppOrPanic(source_path, source, options.palette, "affine 8bpp background");
     var palette_adapter = PaletteMapper{
         .colors = palette.colors[0..palette.count],
         .mode = switch (options.palette) {
@@ -830,14 +961,13 @@ fn createAffineBackgroundTilemap8Bpp(
     };
     defer output.deinit(b.allocator);
 
-    const write_files = b.addWriteFiles();
-    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(output.tiles), options.transforms.tiles);
-    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
-    const map_output = writeAssetOutput(b, write_files, "map.bin", std.mem.sliceAsBytes(output.map), options.transforms.map);
+    const tiles_output = writeAssetOutput(b, writer, "tiles.bin", std.mem.sliceAsBytes(output.tiles), options.transforms.tiles);
+    const palette_output = writeAssetOutput(b, writer, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
+    const map_output = writeAssetOutput(b, writer, "map.bin", std.mem.sliceAsBytes(output.map), options.transforms.map);
     const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile8Bpp", output.tiles.len, 4);
     const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 256, 2);
     const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.AffinePair", output.map.len, 2);
-    const module_path = write_files.add("asset.zig", b.fmt(
+    writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
         \\pub const height: u16 = {d};
@@ -865,18 +995,15 @@ fn createAffineBackgroundTilemap8Bpp(
         palette_declaration,
         map_declaration,
     }));
-    const module = b.createModule(.{ .root_source_file = module_path });
-    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
-    asset.* = .{ .module = module, .tiles = tiles_output.path, .palette = palette_output.path, .map = map_output.path };
-    return asset;
 }
 
 fn createMode4Bitmap8Bpp(
     b: *std.Build,
+    writer: *AssetWriter,
     source_path: []const u8,
     source: image.Image,
     options: ImageAsset.Options,
-) *ImageAsset {
+) void {
     if (source.getWidth() != 240 or source.getHeight() != 160) {
         std.debug.panic(
             "Mode 4 image asset '{s}' is {d}x{d}; Mode 4 assets must be exactly 240x160 pixels",
@@ -884,7 +1011,7 @@ fn createMode4Bitmap8Bpp(
         );
     }
 
-    const palette = preparePalette8BppOrPanic(source_path, source, options.palette);
+    const palette = preparePalette8BppOrPanic(source_path, source, options.palette, "Mode 4");
     var palette_adapter = PaletteMapper{
         .colors = palette.colors[0..palette.count],
         .mode = switch (options.palette) {
@@ -904,12 +1031,11 @@ fn createMode4Bitmap8Bpp(
     };
     defer b.allocator.free(output.data);
 
-    const write_files = b.addWriteFiles();
-    const pixels_output = writeAssetOutput(b, write_files, "pixels.bin", output.data, options.transforms.pixels);
-    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
+    const pixels_output = writeAssetOutput(b, writer, "pixels.bin", output.data, options.transforms.pixels);
+    const palette_output = writeAssetOutput(b, writer, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
     const pixels_declaration = assetOutputDeclaration(b, pixels_output, "pixels", "u8", output.data.len, 4);
     const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 256, 2);
-    const module_path = write_files.add("asset.zig", b.fmt(
+    writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
         \\pub const height: u16 = {d};
@@ -925,15 +1051,6 @@ fn createMode4Bitmap8Bpp(
         pixels_declaration,
         palette_declaration,
     }));
-    const module = b.createModule(.{ .root_source_file = module_path });
-    const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
-    asset.* = .{
-        .module = module,
-        .tiles = pixels_output.path,
-        .palette = palette_output.path,
-        .pixels = pixels_output.path,
-    };
-    return asset;
 }
 
 fn preparePaletteOrPanic(
@@ -971,29 +1088,30 @@ fn preparePalette8BppOrPanic(
     source_path: []const u8,
     source: image.Image,
     policy: ImageAsset.Palette,
+    target: []const u8,
 ) Palette8Bpp {
     return preparePalette8Bpp(source, policy) catch |err| switch (err) {
         error.TooManyColors => std.debug.panic(
-            "Mode 4 image asset '{s}' needs more than 255 opaque RGB555 colors; " ++
+            "{s} image asset '{s}' needs more than 255 opaque RGB555 colors; " ++
                 "set the palette policy to nearest to opt into lossy mapping",
-            .{source_path},
+            .{ target, source_path },
         ),
         error.EmptyPalette => std.debug.panic(
-            "Mode 4 image asset '{s}' has an empty explicit palette; provide one to 255 opaque colors",
-            .{source_path},
+            "{s} image asset '{s}' has an empty explicit palette; provide one to 255 opaque colors",
+            .{ target, source_path },
         ),
         error.PaletteTooLarge => std.debug.panic(
-            "Mode 4 image asset '{s}' has more than 255 explicit opaque palette colors",
-            .{source_path},
+            "{s} image asset '{s}' has more than 255 explicit opaque palette colors",
+            .{ target, source_path },
         ),
         error.DuplicatePaletteColor => std.debug.panic(
-            "Mode 4 image asset '{s}' has duplicate explicit RGB555 palette colors",
-            .{source_path},
+            "{s} image asset '{s}' has duplicate explicit RGB555 palette colors",
+            .{ target, source_path },
         ),
         error.ColorNotInPalette => std.debug.panic(
-            "Mode 4 image asset '{s}' uses an opaque color not present in its explicit RGB555 palette; " ++
+            "{s} image asset '{s}' uses an opaque color not present in its explicit RGB555 palette; " ++
                 "use the nearest palette policy to opt into lossy mapping",
-            .{source_path},
+            .{ target, source_path },
         ),
     };
 }
@@ -1408,4 +1526,14 @@ test "Mode 4 explicit palettes support more than 4bpp palettes" {
         &.{ color.ColorRgba32.red, color.ColorRgba32.green, color.ColorRgba32.blue },
         palette.colors[0..palette.count],
     );
+}
+
+test "8bpp explicit palettes preserve distinct RGB555 colors" {
+    const palette = try explicitPalette8Bpp(&.{
+        ColorRgb555.white,
+        ColorRgb555.red,
+        ColorRgb555.green,
+        ColorRgb555.rgb(0, 16, 31),
+    });
+    try std.testing.expectEqual(@as(usize, 5), palette.count);
 }
