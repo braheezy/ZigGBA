@@ -7,6 +7,7 @@
 const std = @import("std");
 const color = @import("color.zig");
 const image = @import("image.zig");
+const lz77 = @import("lz77.zig");
 const ColorRgb555 = @import("../src/gba/graphics/color.zig").ColorRgb555;
 const BackgroundSize = @import("../src/gba/display/mod.zig").BackgroundSize;
 
@@ -15,13 +16,13 @@ pub const ImageAsset = struct {
     /// The module containing the typed image data. Add it to an executable
     /// module with `std.Build.Module.addImport`.
     module: *std.Build.Module,
-    /// Generated tile data, or Mode 4 pixels when `pixels` is set.
+    /// Generated tile data, or its transformed output when configured.
     tiles: std.Build.LazyPath,
-    /// Generated palette data in RGB555 format.
+    /// Generated palette data, or its transformed output when configured.
     palette: std.Build.LazyPath,
-    /// Generated screenblock entries for tilemap formats, when applicable.
+    /// Generated screenblock entries, or their transformed output when configured.
     map: ?std.Build.LazyPath = null,
-    /// Generated Mode 4 pixel data, when applicable.
+    /// Generated Mode 4 pixels, or their transformed output when configured.
     pixels: ?std.Build.LazyPath = null,
 
     pub const Format = enum {
@@ -52,6 +53,32 @@ pub const ImageAsset = struct {
         /// Use these opaque RGB555 colors, mapping every opaque source color
         /// to its closest entry. This is intentionally lossy.
         nearest: []const ColorRgb555,
+    };
+
+    /// Options for GBA BIOS LZ77 compression.
+    pub const Lz77Options = struct {
+        /// Keep back-references safe for `gba.bios.lz77UnCompVRAM`. This costs
+        /// a little compression ratio, but makes the output safe for either
+        /// the WRAM or VRAM BIOS decompressor.
+        vram_safe: bool = true,
+    };
+
+    /// A transform applied independently to one generated asset output.
+    /// More transform kinds can be added without changing image formats.
+    pub const OutputTransform = union(enum) {
+        lz77: Lz77Options,
+    };
+
+    /// Opt-in transforms for generated asset outputs.
+    ///
+    /// A transformed output is exported as `{name}_lz77` and
+    /// `{name}_lz77_uncompressed_len`, rather than `{name}`. This prevents
+    /// the uncompressed data from also being embedded in the ROM.
+    pub const OutputTransforms = struct {
+        tiles: ?OutputTransform = null,
+        palette: ?OutputTransform = null,
+        map: ?OutputTransform = null,
+        pixels: ?OutputTransform = null,
     };
 
     /// Describes a grid of equally sized sprite frames in the source image.
@@ -118,6 +145,8 @@ pub const ImageAsset = struct {
         format: Format = .obj_tiles_4bpp,
         /// Palette handling for paletted formats.
         palette: Palette = .auto,
+        /// Optional transforms applied to the generated binary outputs.
+        transforms: OutputTransforms = .{},
         /// Optional sprite-frame grid. When omitted, the full image is one
         /// frame. Tiles remain in the source image's row-major tile order.
         sprite_sheet: ?SpriteSheet = null,
@@ -150,6 +179,7 @@ pub const ImageAsset = struct {
     /// RGB555 conversion, and fail if the image exceeds the target palette
     /// capacity.
     pub fn create(b: *std.Build, options: Options) *ImageAsset {
+        validateOutputTransforms(options);
         const source_path = switch (options.source_file) {
             .generated => std.debug.panic(
                 "generated image inputs are not supported by ImageAsset yet; " ++
@@ -177,6 +207,97 @@ pub const ImageAsset = struct {
         };
     }
 };
+
+const AssetOutput = struct {
+    path: std.Build.LazyPath,
+    file_name: []const u8,
+    raw_len: usize,
+    compressed_len: usize,
+    transform: ?ImageAsset.OutputTransform,
+};
+
+fn validateOutputTransforms(options: ImageAsset.Options) void {
+    const transforms = options.transforms;
+    switch (options.format) {
+        .obj_tiles_4bpp => {
+            rejectTransform("map", transforms.map);
+            rejectTransform("pixels", transforms.pixels);
+        },
+        .bg_tilemap_4bpp,
+        .bg_tilemap_4bpp_multi_bank,
+        .bg_tilemap_8bpp,
+        .affine_bg_tilemap_8bpp,
+        => rejectTransform("pixels", transforms.pixels),
+        .mode4_bitmap_8bpp => {
+            rejectTransform("tiles", transforms.tiles);
+            rejectTransform("map", transforms.map);
+        },
+    }
+}
+
+fn rejectTransform(name: []const u8, transform: ?ImageAsset.OutputTransform) void {
+    if (transform != null) {
+        std.debug.panic("this image format does not generate a '{s}' output to transform", .{name});
+    }
+}
+
+fn writeAssetOutput(
+    b: *std.Build,
+    write_files: *std.Build.Step.WriteFile,
+    raw_file_name: []const u8,
+    raw_data: []const u8,
+    transform: ?ImageAsset.OutputTransform,
+) AssetOutput {
+    if (transform) |selected| {
+        switch (selected) {
+            .lz77 => |options| {
+                const data = lz77.compress(b.allocator, raw_data, options.vram_safe) catch |err| {
+                    std.debug.panic("unable to LZ77-compress generated asset output: {s}", .{@errorName(err)});
+                };
+                defer b.allocator.free(data);
+                const file_name = b.fmt("{s}.lz77", .{std.fs.path.stem(raw_file_name)});
+                return .{
+                    .path = write_files.add(file_name, data),
+                    .file_name = file_name,
+                    .raw_len = raw_data.len,
+                    .compressed_len = data.len,
+                    .transform = selected,
+                };
+            },
+        }
+    }
+    return .{
+        .path = write_files.add(raw_file_name, raw_data),
+        .file_name = raw_file_name,
+        .raw_len = raw_data.len,
+        .compressed_len = raw_data.len,
+        .transform = null,
+    };
+}
+
+fn assetOutputDeclaration(
+    b: *std.Build,
+    output: AssetOutput,
+    name: []const u8,
+    raw_type: []const u8,
+    raw_count: usize,
+    raw_alignment: usize,
+) []const u8 {
+    if (output.transform) |selected| {
+        switch (selected) {
+            .lz77 => return b.fmt(
+                \\/// LZ77-compressed data. Decompresses to {d} bytes.
+                \\const {s}_lz77_data align(4) = @embedFile("{s}").*;
+                \\pub const {s}_lz77: *align(4) const [{d}]u8 = @ptrCast(&{s}_lz77_data);
+                \\pub const {s}_lz77_uncompressed_len: usize = {d};
+            , .{ output.raw_len, name, output.file_name, name, output.compressed_len, name, name, output.raw_len }),
+        }
+    }
+    return b.fmt(
+        \\const {s}_data align({d}) = @embedFile("{s}").*;
+        \\pub const {s}: *align({d}) const [{d}]{s} = @ptrCast(&{s}_data);
+    , .{ name, raw_alignment, output.file_name, name, raw_alignment, raw_count, raw_type, name });
+}
 
 /// An exact shared palette for related Mode 4 frames.
 ///
@@ -350,8 +471,10 @@ fn createObjTiles4Bpp(
     defer b.allocator.free(tiles);
 
     const write_files = b.addWriteFiles();
-    const tiles_path = write_files.add("tiles.bin", std.mem.sliceAsBytes(tiles));
-    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&palette.colors));
+    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(tiles), options.transforms.tiles);
+    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
+    const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile4Bpp", tiles.len, 4);
+    const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 16, 2);
     const module_path = write_files.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
@@ -374,10 +497,8 @@ fn createObjTiles4Bpp(
         \\    return ((frame / frames_x) * frame_height_tiles + tile_y) * width_tiles +
         \\        (frame % frames_x) * frame_width_tiles + tile_x;
         \\}}
-        \\const tiles_data align(4) = @embedFile("tiles.bin").*;
-        \\const palette_data align(2) = @embedFile("palette.bin").*;
-        \\pub const tiles: *align(4) const [tile_count]gba.display.Tile4Bpp = @ptrCast(&tiles_data);
-        \\pub const palette: *align(2) const [16]gba.ColorRgb555 = @ptrCast(&palette_data);
+        \\{s}
+        \\{s}
     , .{
         source.getWidth(),
         source.getHeight(),
@@ -393,13 +514,15 @@ fn createObjTiles4Bpp(
         frames.frames_y,
         frames.frame_count,
         frames.frame_tile_count,
+        tiles_declaration,
+        palette_declaration,
     }));
     const module = b.createModule(.{ .root_source_file = module_path });
     const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
     asset.* = .{
         .module = module,
-        .tiles = tiles_path,
-        .palette = palette_path,
+        .tiles = tiles_output.path,
+        .palette = palette_output.path,
     };
     return asset;
 }
@@ -444,9 +567,12 @@ fn createBackgroundTilemap4Bpp(
     defer output.deinit(b.allocator);
 
     const write_files = b.addWriteFiles();
-    const tiles_path = write_files.add("tiles.bin", std.mem.sliceAsBytes(output.tiles));
-    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&palette.colors));
-    const map_path = write_files.add("map.bin", std.mem.sliceAsBytes(output.map));
+    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(output.tiles), options.transforms.tiles);
+    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
+    const map_output = writeAssetOutput(b, write_files, "map.bin", std.mem.sliceAsBytes(output.map), options.transforms.map);
+    const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile4Bpp", output.tiles.len, 4);
+    const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 16, 2);
+    const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.Entry", output.map.len, 2);
     const module_path = write_files.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
@@ -459,12 +585,9 @@ fn createBackgroundTilemap4Bpp(
         \\pub const map_entry_count: usize = {d};
         \\pub const palette_color_count: usize = {d};
         \\pub const background_size: gba.display.BackgroundSize.Normal = .{s};
-        \\const tiles_data align(4) = @embedFile("tiles.bin").*;
-        \\const palette_data align(2) = @embedFile("palette.bin").*;
-        \\const map_data align(2) = @embedFile("map.bin").*;
-        \\pub const tiles: *align(4) const [tile_count]gba.display.Tile4Bpp = @ptrCast(&tiles_data);
-        \\pub const palette: *align(2) const [16]gba.ColorRgb555 = @ptrCast(&palette_data);
-        \\pub const map: *align(2) const [map_entry_count]gba.display.Screenblock.Entry = @ptrCast(&map_data);
+        \\{s}
+        \\{s}
+        \\{s}
     , .{
         source.getWidth(),
         source.getHeight(),
@@ -476,14 +599,17 @@ fn createBackgroundTilemap4Bpp(
         output.map.len,
         palette.count,
         normalBackgroundSizeName(output.map_width_tiles, output.map_height_tiles),
+        tiles_declaration,
+        palette_declaration,
+        map_declaration,
     }));
     const module = b.createModule(.{ .root_source_file = module_path });
     const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
     asset.* = .{
         .module = module,
-        .tiles = tiles_path,
-        .palette = palette_path,
-        .map = map_path,
+        .tiles = tiles_output.path,
+        .palette = palette_output.path,
+        .map = map_output.path,
     };
     return asset;
 }
@@ -538,9 +664,12 @@ fn createMultiBankBackgroundTilemap4Bpp(
     defer output.deinit(b.allocator);
 
     const write_files = b.addWriteFiles();
-    const tiles_path = write_files.add("tiles.bin", std.mem.sliceAsBytes(output.tiles));
-    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&output.palette));
-    const map_path = write_files.add("map.bin", std.mem.sliceAsBytes(output.map));
+    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(output.tiles), options.transforms.tiles);
+    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&output.palette), options.transforms.palette);
+    const map_output = writeAssetOutput(b, write_files, "map.bin", std.mem.sliceAsBytes(output.map), options.transforms.map);
+    const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile4Bpp", output.tiles.len, 4);
+    const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 256, 2);
+    const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.Entry", output.map.len, 2);
     const module_path = write_files.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
@@ -553,12 +682,9 @@ fn createMultiBankBackgroundTilemap4Bpp(
         \\pub const map_entry_count: usize = {d};
         \\pub const palette_bank_count: usize = {d};
         \\pub const background_size: gba.display.BackgroundSize.Normal = .{s};
-        \\const tiles_data align(4) = @embedFile("tiles.bin").*;
-        \\const palette_data align(2) = @embedFile("palette.bin").*;
-        \\const map_data align(2) = @embedFile("map.bin").*;
-        \\pub const tiles: *align(4) const [tile_count]gba.display.Tile4Bpp = @ptrCast(&tiles_data);
-        \\pub const palette: *align(2) const [256]gba.ColorRgb555 = @ptrCast(&palette_data);
-        \\pub const map: *align(2) const [map_entry_count]gba.display.Screenblock.Entry = @ptrCast(&map_data);
+        \\{s}
+        \\{s}
+        \\{s}
     , .{
         source.getWidth(),
         source.getHeight(),
@@ -570,10 +696,13 @@ fn createMultiBankBackgroundTilemap4Bpp(
         output.map.len,
         output.palette_bank_count,
         normalBackgroundSizeName(output.map_width_tiles, output.map_height_tiles),
+        tiles_declaration,
+        palette_declaration,
+        map_declaration,
     }));
     const module = b.createModule(.{ .root_source_file = module_path });
     const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
-    asset.* = .{ .module = module, .tiles = tiles_path, .palette = palette_path, .map = map_path };
+    asset.* = .{ .module = module, .tiles = tiles_output.path, .palette = palette_output.path, .map = map_output.path };
     return asset;
 }
 
@@ -611,7 +740,7 @@ fn createBackgroundTilemap8Bpp(
     };
     defer output.deinit(b.allocator);
 
-    return createNormal8BppModule(b, source, palette, output);
+    return createNormal8BppModule(b, source, palette, output, options.transforms);
 }
 
 fn createNormal8BppModule(
@@ -619,11 +748,15 @@ fn createNormal8BppModule(
     source: image.Image,
     palette: Palette8Bpp,
     output: image.ConvertImageNormalTilemap8BppOutput,
+    transforms: ImageAsset.OutputTransforms,
 ) *ImageAsset {
     const write_files = b.addWriteFiles();
-    const tiles_path = write_files.add("tiles.bin", std.mem.sliceAsBytes(output.tiles));
-    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&palette.colors));
-    const map_path = write_files.add("map.bin", std.mem.sliceAsBytes(output.map));
+    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(output.tiles), transforms.tiles);
+    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), transforms.palette);
+    const map_output = writeAssetOutput(b, write_files, "map.bin", std.mem.sliceAsBytes(output.map), transforms.map);
+    const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile8Bpp", output.tiles.len, 4);
+    const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 256, 2);
+    const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.Entry", output.map.len, 2);
     const module_path = write_files.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
@@ -636,12 +769,9 @@ fn createNormal8BppModule(
         \\pub const map_entry_count: usize = {d};
         \\pub const palette_color_count: usize = {d};
         \\pub const background_size: gba.display.BackgroundSize.Normal = .{s};
-        \\const tiles_data align(4) = @embedFile("tiles.bin").*;
-        \\const palette_data align(2) = @embedFile("palette.bin").*;
-        \\const map_data align(2) = @embedFile("map.bin").*;
-        \\pub const tiles: *align(4) const [tile_count]gba.display.Tile8Bpp = @ptrCast(&tiles_data);
-        \\pub const palette: *align(2) const [256]gba.ColorRgb555 = @ptrCast(&palette_data);
-        \\pub const map: *align(2) const [map_entry_count]gba.display.Screenblock.Entry = @ptrCast(&map_data);
+        \\{s}
+        \\{s}
+        \\{s}
     , .{
         source.getWidth(),
         source.getHeight(),
@@ -653,10 +783,13 @@ fn createNormal8BppModule(
         output.map.len,
         palette.count,
         normalBackgroundSizeName(output.map_width_tiles, output.map_height_tiles),
+        tiles_declaration,
+        palette_declaration,
+        map_declaration,
     }));
     const module = b.createModule(.{ .root_source_file = module_path });
     const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
-    asset.* = .{ .module = module, .tiles = tiles_path, .palette = palette_path, .map = map_path };
+    asset.* = .{ .module = module, .tiles = tiles_output.path, .palette = palette_output.path, .map = map_output.path };
     return asset;
 }
 
@@ -698,9 +831,12 @@ fn createAffineBackgroundTilemap8Bpp(
     defer output.deinit(b.allocator);
 
     const write_files = b.addWriteFiles();
-    const tiles_path = write_files.add("tiles.bin", std.mem.sliceAsBytes(output.tiles));
-    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&palette.colors));
-    const map_path = write_files.add("map.bin", std.mem.sliceAsBytes(output.map));
+    const tiles_output = writeAssetOutput(b, write_files, "tiles.bin", std.mem.sliceAsBytes(output.tiles), options.transforms.tiles);
+    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
+    const map_output = writeAssetOutput(b, write_files, "map.bin", std.mem.sliceAsBytes(output.map), options.transforms.map);
+    const tiles_declaration = assetOutputDeclaration(b, tiles_output, "tiles", "gba.display.Tile8Bpp", output.tiles.len, 4);
+    const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 256, 2);
+    const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.AffinePair", output.map.len, 2);
     const module_path = write_files.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
@@ -712,12 +848,9 @@ fn createAffineBackgroundTilemap8Bpp(
         \\pub const map_pair_count: usize = {d};
         \\pub const palette_color_count: usize = {d};
         \\pub const background_size: gba.display.BackgroundSize.Affine = .{s};
-        \\const tiles_data align(4) = @embedFile("tiles.bin").*;
-        \\const palette_data align(2) = @embedFile("palette.bin").*;
-        \\const map_data align(2) = @embedFile("map.bin").*;
-        \\pub const tiles: *align(4) const [tile_count]gba.display.Tile8Bpp = @ptrCast(&tiles_data);
-        \\pub const palette: *align(2) const [256]gba.ColorRgb555 = @ptrCast(&palette_data);
-        \\pub const map: *align(2) const [map_pair_count]gba.display.Screenblock.AffinePair = @ptrCast(&map_data);
+        \\{s}
+        \\{s}
+        \\{s}
     , .{
         source.getWidth(),
         source.getHeight(),
@@ -728,10 +861,13 @@ fn createAffineBackgroundTilemap8Bpp(
         output.map.len,
         palette.count,
         affineBackgroundSizeName(affine_size),
+        tiles_declaration,
+        palette_declaration,
+        map_declaration,
     }));
     const module = b.createModule(.{ .root_source_file = module_path });
     const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
-    asset.* = .{ .module = module, .tiles = tiles_path, .palette = palette_path, .map = map_path };
+    asset.* = .{ .module = module, .tiles = tiles_output.path, .palette = palette_output.path, .map = map_output.path };
     return asset;
 }
 
@@ -769,31 +905,33 @@ fn createMode4Bitmap8Bpp(
     defer b.allocator.free(output.data);
 
     const write_files = b.addWriteFiles();
-    const pixels_path = write_files.add("pixels.bin", output.data);
-    const palette_path = write_files.add("palette.bin", std.mem.sliceAsBytes(&palette.colors));
+    const pixels_output = writeAssetOutput(b, write_files, "pixels.bin", output.data, options.transforms.pixels);
+    const palette_output = writeAssetOutput(b, write_files, "palette.bin", std.mem.sliceAsBytes(&palette.colors), options.transforms.palette);
+    const pixels_declaration = assetOutputDeclaration(b, pixels_output, "pixels", "u8", output.data.len, 4);
+    const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 256, 2);
     const module_path = write_files.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
         \\pub const width: u16 = {d};
         \\pub const height: u16 = {d};
         \\pub const pixel_count: usize = {d};
         \\pub const palette_color_count: usize = {d};
-        \\const pixels_data align(4) = @embedFile("pixels.bin").*;
-        \\const palette_data align(2) = @embedFile("palette.bin").*;
-        \\pub const pixels: *align(4) const [pixel_count]u8 = @ptrCast(&pixels_data);
-        \\pub const palette: *align(2) const [256]gba.ColorRgb555 = @ptrCast(&palette_data);
+        \\{s}
+        \\{s}
     , .{
         output.width,
         output.height,
         output.data.len,
         palette.count,
+        pixels_declaration,
+        palette_declaration,
     }));
     const module = b.createModule(.{ .root_source_file = module_path });
     const asset = b.allocator.create(ImageAsset) catch @panic("OOM");
     asset.* = .{
         .module = module,
-        .tiles = pixels_path,
-        .palette = palette_path,
-        .pixels = pixels_path,
+        .tiles = pixels_output.path,
+        .palette = palette_output.path,
+        .pixels = pixels_output.path,
     };
     return asset;
 }

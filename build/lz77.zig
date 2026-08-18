@@ -95,3 +95,56 @@ fn startControlByte(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !usiz
     try out.*.append(allocator, 0); // placeholder control byte
     return idx;
 }
+
+fn decompressForTest(allocator: std.mem.Allocator, compressed: []const u8) ![]u8 {
+    if (compressed.len < 4 or compressed[0] != 0x10) return error.InvalidData;
+    const output_len = @as(usize, compressed[1]) |
+        (@as(usize, compressed[2]) << 8) |
+        (@as(usize, compressed[3]) << 16);
+    var output = try allocator.alloc(u8, output_len);
+    errdefer allocator.free(output);
+
+    var source_index: usize = 4;
+    var output_index: usize = 0;
+    while (output_index < output.len) {
+        if (source_index == compressed.len) return error.InvalidData;
+        const flags = compressed[source_index];
+        source_index += 1;
+        for (0..8) |block| {
+            if (output_index == output.len) break;
+            const flag: u8 = @as(u8, 0x80) >> @intCast(block);
+            if ((flags & flag) == 0) {
+                if (source_index == compressed.len) return error.InvalidData;
+                output[output_index] = compressed[source_index];
+                source_index += 1;
+                output_index += 1;
+                continue;
+            }
+            if (source_index + 1 >= compressed.len) return error.InvalidData;
+            const first = compressed[source_index];
+            const second = compressed[source_index + 1];
+            source_index += 2;
+            const length = @as(usize, first >> 4) + 3;
+            const distance = (@as(usize, first & 0x0f) << 8 | @as(usize, second)) + 1;
+            if (distance > output_index or length > output.len - output_index) return error.InvalidData;
+            for (0..length) |index| {
+                output[output_index + index] = output[output_index - distance + index];
+            }
+            output_index += length;
+        }
+    }
+    return output;
+}
+
+test "LZ77 output round-trips for WRAM and VRAM-safe streams" {
+    const source = "repeated tile data repeated tile data repeated tile data repeated tile data";
+    inline for (.{ false, true }) |vram_safe| {
+        const compressed = try compress(std.testing.allocator, source, vram_safe);
+        defer std.testing.allocator.free(compressed);
+        try std.testing.expectEqual(@as(u8, 0x10), compressed[0]);
+
+        const decompressed = try decompressForTest(std.testing.allocator, compressed);
+        defer std.testing.allocator.free(decompressed);
+        try std.testing.expectEqualSlices(u8, source, decompressed);
+    }
+}

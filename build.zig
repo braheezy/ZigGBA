@@ -19,6 +19,10 @@ fn buildExamples(b: *GbaBuild) void {
         .source_file = b.path("examples/charBlock/charBlock.png"),
         .format = .bg_tilemap_4bpp_multi_bank,
         .multi_bank_tilemap_4bpp = .{ .dedupe = true, .dedupe_flips = true },
+        .transforms = .{
+            .tiles = .{ .lz77 = .{} },
+            .map = .{ .lz77 = .{} },
+        },
     });
     charBlock_assets.addImport("assets");
     _ = b.addExecutable(.{
@@ -149,11 +153,13 @@ fn buildExamples(b: *GbaBuild) void {
         .source_file = b.path("examples/mode4flip/front.bmp"),
         .format = .mode4_bitmap_8bpp,
         .palette = .{ .provided = mode4flip_palette.getOpaqueColors() },
+        .transforms = .{ .pixels = .{ .lz77 = .{} } },
     });
     _ = mode4flip_assets.addImage("back", .{
         .source_file = b.path("examples/mode4flip/back.bmp"),
         .format = .mode4_bitmap_8bpp,
         .palette = .{ .provided = mode4flip_palette.getOpaqueColors() },
+        .transforms = .{ .pixels = .{ .lz77 = .{} } },
     });
     mode4flip_assets.addImport("assets");
 

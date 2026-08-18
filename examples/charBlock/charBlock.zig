@@ -14,8 +14,8 @@ pub export fn main() void {
     });
 
     gba.display.memcpyBackgroundPalette(0, assets.ids.palette[0..]);
-    gba.display.memcpyBackgroundTiles4Bpp(0, assets.ids.tiles[0..]);
-    bg0_map.copyFrom(assets.ids.map[0..]);
+    gba.bios.lz77UnCompVRAM(@ptrCast(assets.ids.tiles_lz77), @ptrCast(@volatileCast(&gba.mem.vram[0])));
+    gba.bios.lz77UnCompVRAM(@ptrCast(assets.ids.map_lz77), @ptrCast(@volatileCast(bg0_map.getBaseScreenblock())));
 
     gba.display.ctrl.* = .initMode0(.{ .bg0 = true });
     while (true) gba.display.naiveVSync();

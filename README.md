@@ -104,6 +104,40 @@ _ = assets.addImage("hero", .{
 Lower-level image converters remain available for project-specific processing
 and formats not yet covered by this high-level API.
 
+### Compressing generated outputs
+
+Every image target accepts the same `transforms` field. LZ77 can be applied
+independently to `tiles`, `map`, `pixels`, or `palette`, so a game chooses its
+own ROM-size versus loading-time trade-off instead of each image format growing
+compression-specific options.
+
+```zig
+_ = assets.addImage("level", .{
+    .source_file = b.path("assets/level.png"),
+    .format = .bg_tilemap_4bpp_multi_bank,
+    .transforms = .{
+        .tiles = .{ .lz77 = .{} },
+        .map = .{ .lz77 = .{} },
+    },
+});
+```
+
+Transforming an output deliberately replaces its ordinary export, preventing
+the raw bytes from being embedded too. For example, transformed `pixels`
+become `pixels_lz77` and `pixels_lz77_uncompressed_len`. LZ77 is VRAM-safe by
+default, so it can be sent directly to the BIOS VRAM decompressor:
+
+```zig
+gba.bios.lz77UnCompVRAM(
+    @ptrCast(assets.title.pixels_lz77),
+    @ptrCast(@volatileCast(&gba.display.getMode4Surface(0).data[0])),
+);
+```
+
+Use `gba.bios.lz77UnCompWRAM` when the destination is RAM. Set
+`.lz77 = .{ .vram_safe = false }` only for streams that will never be
+decompressed directly into VRAM; it can improve compression slightly.
+
 ### Tiled backgrounds
 
 Use `bg_tilemap_4bpp` to generate 4bpp tiles and a normal-background map from
