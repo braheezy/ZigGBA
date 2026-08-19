@@ -2,10 +2,10 @@ const std = @import("std");
 const assert = @import("std").debug.assert;
 const GbaBuild = @import("../gba_build.zig").GbaBuild;
 const Image = @import("image.zig").Image;
-const RectU16 = @import("../src/gba/math.zig").RectU16;
-const Vec2U16 = @import("../src/gba/math.zig").Vec2U16;
+const RectU16 = @import("../src/gba/math/mod.zig").RectU16;
+const Vec2U16 = @import("../src/gba/math/mod.zig").Vec2U16;
 
-pub const CharsetFlags = @import("../src/gba/text.zig").CharsetFlags;
+pub const CharsetFlags = @import("../src/gba/text/mod.zig").CharsetFlags;
 
 pub const Charset = struct {
     /// Represents an invalid or missing charset.

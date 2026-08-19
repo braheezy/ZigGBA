@@ -4,7 +4,7 @@ const font = @import("build/font.zig");
 const image = @import("build/image.zig");
 const color = @import("build/color.zig");
 // Import types from GBA runtime
-const LoggerInterface = @import("src/gba/debug.zig").LoggerInterface;
+const LoggerInterface = @import("src/gba/debug/mod.zig").LoggerInterface;
 const CharsetFlags = font.CharsetFlags;
 
 const gba_linker_script_path = "src/gba/gba.ld";
@@ -322,6 +322,26 @@ pub const GbaBuild = struct {
         return font.BuildFontsStep.create(self);
     }
 
+    /// Converts a common image asset with safe target-specific defaults.
+    ///
+    /// Unlike the lower-level conversion steps, this returns a module-backed
+    /// asset. Call `ImageAsset.addImport` to add it to a consumer module, or
+    /// use `GbaExecutable.addImage` to do so automatically.
+    pub fn addImage(
+        self: *GbaBuild,
+        options: image.ImageAsset.Options,
+    ) *image.ImageAsset {
+        return image.ImageAsset.create(self.b, options);
+    }
+
+    /// Builds an exact shared palette for related Mode 4 frames.
+    pub fn addMode4Palette(
+        self: *GbaBuild,
+        options: image.Mode4Palette.Options,
+    ) *image.Mode4Palette {
+        return image.Mode4Palette.create(self.b, options);
+    }
+
     pub fn addConvertImageTiles4BppStep(
         self: GbaBuild,
         options: image.ConvertImageTiles4BppStep.Options,
@@ -391,6 +411,33 @@ pub const GbaExecutable = struct {
 
     pub fn getOwner(self: GbaExecutable) *std.Build {
         return self.step.step.owner;
+    }
+
+    /// Adds an image asset module to this executable.
+    pub fn addImage(
+        self: *GbaExecutable,
+        import_name: []const u8,
+        options: image.ImageAsset.Options,
+    ) *image.ImageAsset {
+        const asset = image.ImageAsset.create(self.getOwner(), options);
+        asset.addImport(self.step.root_module, import_name, self.gba_module);
+        return asset;
+    }
+
+    /// Builds an exact shared palette for related Mode 4 frames.
+    pub fn addMode4Palette(
+        self: *GbaExecutable,
+        options: image.Mode4Palette.Options,
+    ) *image.Mode4Palette {
+        return image.Mode4Palette.create(self.getOwner(), options);
+    }
+
+    /// Creates a module that aggregates generated image assets.
+    ///
+    /// Add assets with `AssetModule.addImage`, then call
+    /// `AssetModule.addImport` once to make them available under one import.
+    pub fn createAssetModule(self: *GbaExecutable) *image.AssetModule {
+        return image.AssetModule.create(self.getOwner(), self.step.root_module, self.gba_module);
     }
 
     pub fn dependOn(self: *GbaExecutable, step: *std.Build.Step) void {

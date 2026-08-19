@@ -2,7 +2,7 @@ const std = @import("std");
 const assert = @import("std").debug.assert;
 const Palettizer = @import("color.zig").Palettizer;
 const ColorRgba32 = @import("color.zig").ColorRgba32;
-const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
+const ColorRgb555 = @import("../src/gba/graphics/color.zig").ColorRgb555;
 
 /// Naïve bit depth conversion from 8-bit to 5-bit color channels.
 pub fn convertColorDepthLinear(truecolor: ColorRgba32) ColorRgb555 {

@@ -4,8 +4,8 @@ const ColorRgba32 = @import("color.zig").ColorRgba32;
 const Palettizer = @import("color.zig").Palettizer;
 const ColorQuantizer = @import("color.zig").ColorQuantizer;
 const Image = @import("image.zig").Image;
-const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
-const RectU16 = @import("../src/gba/math.zig").RectU16;
+const ColorRgb555 = @import("../src/gba/graphics/color.zig").ColorRgb555;
+const RectU16 = @import("../src/gba/math/mod.zig").RectU16;
 const lz77 = @import("lz77.zig");
 
 /// Options expected by `convertImageBitmap8Bpp`.

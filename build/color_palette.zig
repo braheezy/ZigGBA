@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
+const ColorRgb555 = @import("../src/gba/graphics/color.zig").ColorRgb555;
 
 /// Save palette data as a binary file at a given file path.
 pub fn savePalette(

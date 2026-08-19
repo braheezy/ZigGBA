@@ -2,8 +2,12 @@ const zpix = @import("zpix/root.zig");
 const std = @import("std");
 const assert = @import("std").debug.assert;
 const ColorRgba32 = @import("color.zig").ColorRgba32;
-const RectU16 = @import("../src/gba/math.zig").RectU16;
-const Vec2U16 = @import("../src/gba/math.zig").Vec2U16;
+const RectU16 = @import("../src/gba/math/mod.zig").RectU16;
+const Vec2U16 = @import("../src/gba/math/mod.zig").Vec2U16;
+
+pub const ImageAsset = @import("image_asset.zig").ImageAsset;
+pub const AssetModule = @import("image_asset.zig").AssetModule;
+pub const Mode4Palette = @import("image_asset.zig").Mode4Palette;
 
 pub const ConvertImageBitmap8BppOptions = @import("image_bitmap.zig").ConvertImageBitmap8BppOptions;
 pub const ConvertImageBitmap16BppOptions = @import("image_bitmap.zig").ConvertImageBitmap16BppOptions;
@@ -40,6 +44,20 @@ pub const convertImageTilemap4BppPath = @import("image_tilemap.zig").convertImag
 pub const convertSaveImageTilemap4BppPath = @import("image_tilemap.zig").convertSaveImageTilemap4BppPath;
 pub const convertImageTilemap4Bpp = @import("image_tilemap.zig").convertImageTilemap4Bpp;
 pub const ConvertImageTilemap4BppStep = @import("image_tilemap.zig").ConvertImageTilemap4BppStep;
+
+pub const MultiBankPalette4Bpp = @import("image_tilemap_4bpp_multibank.zig").PaletteBanks;
+pub const ConvertImageTilemap4BppMultiBankOptions = @import("image_tilemap_4bpp_multibank.zig").ConvertImageTilemap4BppMultiBankOptions;
+pub const ConvertImageTilemap4BppMultiBankOutput = @import("image_tilemap_4bpp_multibank.zig").ConvertImageTilemap4BppMultiBankOutput;
+pub const ConvertImageTilemap4BppMultiBankError = @import("image_tilemap_4bpp_multibank.zig").ConvertImageTilemap4BppMultiBankError;
+pub const convertImageTilemap4BppMultiBank = @import("image_tilemap_4bpp_multibank.zig").convertImageTilemap4BppMultiBank;
+
+pub const ConvertImageNormalTilemap8BppOptions = @import("image_tilemap_8bpp.zig").ConvertImageNormalTilemap8BppOptions;
+pub const ConvertImageNormalTilemap8BppOutput = @import("image_tilemap_8bpp.zig").ConvertImageNormalTilemap8BppOutput;
+pub const ConvertImageAffineTilemap8BppOptions = @import("image_tilemap_8bpp.zig").ConvertImageAffineTilemap8BppOptions;
+pub const ConvertImageAffineTilemap8BppOutput = @import("image_tilemap_8bpp.zig").ConvertImageAffineTilemap8BppOutput;
+pub const ConvertImageTilemap8BppError = @import("image_tilemap_8bpp.zig").ConvertImageTilemap8BppError;
+pub const convertImageNormalTilemap8Bpp = @import("image_tilemap_8bpp.zig").convertImageNormalTilemap8Bpp;
+pub const convertImageAffineTilemap8Bpp = @import("image_tilemap_8bpp.zig").convertImageAffineTilemap8Bpp;
 
 /// Provides an interface for loading and reading image data.
 pub const Image = struct {

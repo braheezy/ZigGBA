@@ -1,4 +1,4 @@
-pub const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
+pub const ColorRgb555 = @import("../src/gba/graphics/color.zig").ColorRgb555;
 
 pub const savePalette = @import("color_palette.zig").savePalette;
 pub const SavePaletteStep = @import("color_palette.zig").SavePaletteStep;

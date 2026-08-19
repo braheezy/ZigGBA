@@ -54,6 +54,251 @@ pub export fn main() void {
 }
 ```
 
+## Images
+
+ZigGBA includes an experimental typed image-asset path for common formats.
+It generates a module instead of requiring the game to manage generated
+binary paths:
+
+```zig
+const exe = gba_b.addExecutable(.{
+    .name = "game",
+    .root_source_file = b.path("src/main.zig"),
+});
+var assets = exe.createAssetModule();
+_ = assets.addImage("player", .{
+    .source_file = b.path("assets/player.png"),
+});
+assets.addImport("assets");
+```
+
+The game can then import the asset as ordinary Zig code:
+
+```zig
+const assets = @import("assets");
+const player = assets.player;
+
+gba.display.memcpyObjectTiles4Bpp(0, player.tiles[0..]);
+gba.display.memcpyObjectPalette(0, player.palette[0..]);
+```
+
+The current default target is 4bpp OBJ tiles. It reserves palette index 0
+for transparent pixels, converts colors to RGB555, and reports an error when
+more than 15 opaque colors are required.
+
+Projects that need a locked palette or intentionally lossy conversion can opt
+in explicitly. A sprite-sheet grid supplies frame metadata without changing
+the source image's row-major tile order:
+
+```zig
+_ = assets.addImage("hero", .{
+    .source_file = b.path("assets/hero.png"),
+    .palette = .{ .provided = &.{ .white, .red, .blue } },
+    .sprite_sheet = .{ .frame_width = 16, .frame_height = 16 },
+});
+// Use `.palette = .{ .nearest = ... }` only when nearest-color mapping is
+// desired. Generated assets expose `frame_count`, `frames_x`, `frames_y`,
+// and `frameTileIndex` for the source-order tile layout.
+```
+
+Lower-level image converters remain available for project-specific processing
+and formats not yet covered by this high-level API.
+
+### Compressing generated outputs
+
+Every image target accepts the same `transforms` field. LZ77 can be applied
+independently to `tiles`, `map`, `pixels`, or `palette`, so a game chooses its
+own ROM-size versus loading-time trade-off instead of each image format growing
+compression-specific options.
+
+```zig
+_ = assets.addImage("level", .{
+    .source_file = b.path("assets/level.png"),
+    .format = .bg_tilemap_4bpp_multi_bank,
+    .transforms = .{
+        .tiles = .{ .lz77 = .{} },
+        .map = .{ .lz77 = .{} },
+    },
+});
+```
+
+Transforming an output deliberately replaces its ordinary export, preventing
+the raw bytes from being embedded too. For example, transformed `pixels`
+become `pixels_lz77` and `pixels_lz77_uncompressed_len`. LZ77 is VRAM-safe by
+default, so it can be sent directly to the BIOS VRAM decompressor:
+
+```zig
+gba.bios.lz77UnCompVRAM(
+    @ptrCast(assets.title.pixels_lz77),
+    @ptrCast(@volatileCast(&gba.display.getMode4Surface(0).data[0])),
+);
+```
+
+Use `gba.bios.lz77UnCompWRAM` when the destination is RAM. Set
+`.lz77 = .{ .vram_safe = false }` only for streams that will never be
+decompressed directly into VRAM; it can improve compression slightly.
+
+### Tiled backgrounds
+
+Use `bg_tilemap_4bpp` to generate 4bpp tiles and a normal-background map from
+one PNG. The map is padded to the GBA's 32×32 or 64×64 screenblock layouts and
+its entries use tile index zero as the first generated tile.
+
+```zig
+_ = assets.addImage("level", .{
+    .source_file = b.path("assets/level.png"),
+    .format = .bg_tilemap_4bpp,
+    .tilemap = .{
+        .dedupe = true,
+        .dedupe_flips = true,
+    },
+});
+```
+
+At runtime, configure the matching map size and copy the generated data:
+
+```zig
+const level = assets.level;
+const bg0_map = gba.display.BackgroundMap.setup(0, .{
+    .base_screenblock = 28,
+    .size = level.background_size,
+});
+gba.display.memcpyBackgroundPalette(0, level.palette[0..]);
+gba.display.memcpyBackgroundTiles4Bpp(0, level.tiles[0..]);
+bg0_map.copyFrom(level.map[0..]);
+```
+
+Source-order tiles are the default. Enable `dedupe` and `dedupe_flips` only
+when smaller tile data is worth the resulting non-linear tile indices.
+
+### Multi-bank 4bpp tiled backgrounds
+
+Use `bg_tilemap_4bpp_multi_bank` when the background needs more than fifteen
+opaque colors overall but every 8×8 tile fits in one 16-color palette bank.
+The default `.auto` policy packs each tile's complete color set into the first
+bank that fits, creating banks as needed. It is deterministic and convenient,
+but deliberately greedy rather than a global palette optimizer.
+
+```zig
+_ = assets.addImage("level", .{
+    .source_file = b.path("assets/level.png"),
+    .format = .bg_tilemap_4bpp_multi_bank,
+    .multi_bank_tilemap_4bpp = .{
+        .dedupe = true,
+        .dedupe_flips = true,
+    },
+});
+```
+
+The generated `palette` contains all sixteen 16-color background banks
+(256 RGB555 entries). Each generated map entry selects the bank required by
+its tile, so the runtime setup is otherwise the same as a normal 4bpp map:
+
+```zig
+const level = assets.level;
+const bg0_map = gba.display.BackgroundMap.setup(0, .{
+    .base_screenblock = 28,
+    .size = level.background_size,
+});
+gba.display.memcpyBackgroundPalette(0, level.palette[0..]);
+gba.display.memcpyBackgroundTiles4Bpp(0, level.tiles[0..]);
+bg0_map.copyFrom(level.map[0..]);
+```
+
+For an artist-authored layout, provide one through sixteen complete banks.
+Entry zero in each bank is reserved for transparent pixels; every opaque tile
+color must appear in one of the remaining entries of a single bank.
+
+```zig
+const palette_banks = [_][16]gba.ColorRgb555{
+    .{ .black, .red, .green, .blue, .white, .black, .black, .black,
+       .black, .black, .black, .black, .black, .black, .black, .black },
+    .{ .black, .blue, .green, .red, .white, .black, .black, .black,
+       .black, .black, .black, .black, .black, .black, .black, .black },
+};
+_ = assets.addImage("level", .{
+    .source_file = b.path("assets/level.png"),
+    .format = .bg_tilemap_4bpp_multi_bank,
+    .multi_bank_tilemap_4bpp = .{
+        .palette_banks = .{ .provided = &palette_banks },
+    },
+});
+```
+
+### 8bpp tiled backgrounds
+
+Normal and affine 8bpp backgrounds are separate targets because normal maps
+can encode flips while affine maps use byte tile indices and cannot. Both use
+the full 256-color background palette.
+
+```zig
+_ = assets.addImage("normal_bg", .{
+    .source_file = b.path("assets/normal-bg.png"),
+    .format = .bg_tilemap_8bpp,
+    .tilemap_8bpp = .{ .dedupe = true, .dedupe_flips = true },
+});
+_ = assets.addImage("affine_bg", .{
+    .source_file = b.path("assets/affine-tiles.png"),
+    .format = .affine_bg_tilemap_8bpp,
+    .affine_tilemap_8bpp = .{ .repeat_source = true, .dedupe = true },
+});
+```
+
+`affine_bg_tilemap_8bpp` automatically chooses the smallest square affine map
+that contains its source tiles. With `repeat_source`, the source tile grid is
+repeated to fill that map; otherwise it is placed at the top-left and unused
+entries select tile zero.
+
+```zig
+const bg2 = assets.affine_bg;
+gba.display.memcpyBackgroundTiles8Bpp(0, bg2.tiles[0..]);
+gba.display.memcpyBackgroundPalette(0, bg2.palette[0..]);
+gba.display.bg_ctrl[2] = .initAffine(.{
+    .base_screenblock = 5,
+    .size = bg2.background_size,
+});
+const map = gba.display.AffineBackgroundMap.initCtrl(gba.display.bg_ctrl[2]);
+map.copyFrom(bg2.map[0..]);
+```
+
+### Mode 4 bitmaps
+
+`mode4_bitmap_8bpp` produces a full 240×160 indexed bitmap and a 256-color
+background palette. It uses the same exact-by-default palette policy as tile
+assets:
+
+```zig
+_ = assets.addImage("title", .{
+    .source_file = b.path("assets/title.png"),
+    .format = .mode4_bitmap_8bpp,
+});
+```
+
+Load it into either Mode 4 buffer with ordinary typed data:
+
+```zig
+const title = assets.title;
+gba.mem.memcpy(gba.display.getMode4Surface(0).data, title.pixels, title.pixel_count);
+gba.display.memcpyBackgroundPalette(0, title.palette[0..]);
+```
+
+Frames that will be displayed with one palette should use a shared palette
+collector before their image assets are created:
+
+```zig
+const palette = exe.addMode4Palette(.{
+    .source_files = &.{
+        b.path("assets/front.png"),
+        b.path("assets/back.png"),
+    },
+});
+_ = assets.addImage("front", .{
+    .source_file = b.path("assets/front.png"),
+    .format = .mode4_bitmap_8bpp,
+    .palette = .{ .provided = palette.getOpaqueColors() },
+});
+```
+
 ## Fork
 
 This fork has too many changes to document. The highlights are:

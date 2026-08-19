@@ -10,10 +10,21 @@ pub const color = @import("build/color.zig");
 
 // Build all example ROMs.
 fn buildExamples(b: *GbaBuild) void {
-    _ = b.addExecutable(.{
+    var charBlock = b.addExecutable(.{
         .name = "charBlock",
         .root_source_file = b.path("examples/charBlock/charBlock.zig"),
     });
+    var charBlock_assets = charBlock.createAssetModule();
+    _ = charBlock_assets.addImage("ids", .{
+        .source_file = b.path("examples/charBlock/charBlock.png"),
+        .format = .bg_tilemap_4bpp_multi_bank,
+        .multi_bank_tilemap_4bpp = .{ .dedupe = true, .dedupe_flips = true },
+        .transforms = .{
+            .tiles = .{ .lz77 = .{} },
+            .map = .{ .lz77 = .{} },
+        },
+    });
+    charBlock_assets.addImport("assets");
     _ = b.addExecutable(.{
         .name = "debugPrint",
         .root_source_file = b.path("examples/debugPrint/debugPrint.zig"),
@@ -105,78 +116,70 @@ fn buildExamples(b: *GbaBuild) void {
         .root_source_file = b.path("examples/bgAffine/bgAffine.zig"),
         .build_options = .{ .text_charsets = .all },
     });
-    const bgAffine_pal = color.PalettizerNearest.create(
-        b.allocator(),
-        &[_]color.ColorRgba32{
-            .transparent,
-            .white,
-            .red,
-            .green,
-            .aqua,
+    var bgAffine_assets = bgAffine.createAssetModule();
+    _ = bgAffine_assets.addImage("background", .{
+        .source_file = b.path("examples/bgAffine/tiles.png"),
+        .format = .affine_bg_tilemap_8bpp,
+        .palette = .{ .provided = &.{ .white, .red, .green, color.ColorRgb555.rgb(0, 16, 31) } },
+        .affine_tilemap_8bpp = .{
+            .repeat_source = true,
+            .dedupe = true,
         },
-    ) catch @panic("OOM");
-    _ = bgAffine.addConvertImageTiles8BppStep(.{
-        .image_path = "examples/bgAffine/tiles.png",
-        .output_path = "examples/bgAffine/tiles.bin",
-        .options = .{ .palettizer = bgAffine_pal.pal() },
     });
+    bgAffine_assets.addImport("assets");
 
     var jesuMusic = b.addExecutable(.{
         .name = "jesuMusic",
         .root_source_file = b.path("examples/jesuMusic/jesuMusic.zig"),
     });
-    const jesuMusic_pal = color.PalettizerNearest.create(
-        b.allocator(),
-        &[_]color.ColorRgba32{
-            .transparent,
-            .white,
-            .black,
-        },
-    ) catch @panic("OOM");
-    _ = jesuMusic.addConvertImageTiles4BppStep(.{
-        .image_path = "examples/jesuMusic/charset.png",
-        .output_path = "examples/jesuMusic/charset.bin",
-        .options = .{ .palettizer = jesuMusic_pal.pal() },
+    var jesuMusic_assets = jesuMusic.createAssetModule();
+    _ = jesuMusic_assets.addImage("charset", .{
+        .source_file = b.path("examples/jesuMusic/charset.png"),
     });
+    jesuMusic_assets.addImport("assets");
 
     var mode4flip = b.addExecutable(.{
         .name = "mode4flip",
         .root_source_file = b.path("examples/mode4flip/mode4flip.zig"),
     });
-    const mode4flip_pal = color.PalettizerNaive.create(
-        b.allocator(),
-        256,
-    ) catch @panic("OOM");
-    var mode4flip_pal_step = mode4flip.addSaveQuantizedPalettizerPaletteStep(.{
-        .palettizer = mode4flip_pal.pal(),
-        .output_path = "examples/mode4flip/mode4flip.agp",
+    const mode4flip_palette = mode4flip.addMode4Palette(.{
+        .source_files = &.{
+            b.path("examples/mode4flip/front.bmp"),
+            b.path("examples/mode4flip/back.bmp"),
+        },
     });
-    const mode4flip_front_step = mode4flip.addConvertImageBitmap8BppStep(.{
-        .image_path = "examples/mode4flip/front.bmp",
-        .output_path = "examples/mode4flip/front.agi",
-        .options = .{ .palettizer = mode4flip_pal.pal() },
+    var mode4flip_assets = mode4flip.createAssetModule();
+    _ = mode4flip_assets.addImage("front", .{
+        .source_file = b.path("examples/mode4flip/front.bmp"),
+        .format = .mode4_bitmap_8bpp,
+        .palette = .{ .provided = mode4flip_palette.getOpaqueColors() },
+        .transforms = .{ .pixels = .{ .lz77 = .{} } },
     });
-    const mode4flip_back_step = mode4flip.addConvertImageBitmap8BppStep(.{
-        .image_path = "examples/mode4flip/back.bmp",
-        .output_path = "examples/mode4flip/back.agi",
-        .options = .{ .palettizer = mode4flip_pal.pal() },
+    _ = mode4flip_assets.addImage("back", .{
+        .source_file = b.path("examples/mode4flip/back.bmp"),
+        .format = .mode4_bitmap_8bpp,
+        .palette = .{ .provided = mode4flip_palette.getOpaqueColors() },
+        .transforms = .{ .pixels = .{ .lz77 = .{} } },
     });
-    mode4flip_pal_step.step.dependOn(&mode4flip_front_step.step);
-    mode4flip_pal_step.step.dependOn(&mode4flip_back_step.step);
+    mode4flip_assets.addImport("assets");
 
     var mode4fliplz = b.addExecutable(.{
         .name = "mode4fliplz",
         .root_source_file = b.path("examples/mode4fliplz/mode4fliplz.zig"),
     });
+    const mode4fliplz_pal = color.PalettizerNaive.create(
+        b.allocator(),
+        256,
+    ) catch @panic("OOM");
     var mode4fliplz_pal_step = mode4fliplz.addSaveQuantizedPalettizerPaletteStep(.{
-        .palettizer = mode4flip_pal.pal(),
+        .palettizer = mode4fliplz_pal.pal(),
         .output_path = "examples/mode4fliplz/mode4fliplz.agp",
     });
     const mode4fliplz_front_step = mode4fliplz.addConvertImageBitmap8BppStep(.{
         .image_path = "examples/mode4fliplz/front.bmp",
         .output_path = "examples/mode4fliplz/front.lz",
         .options = .{
-            .palettizer = mode4flip_pal.pal(),
+            .palettizer = mode4fliplz_pal.pal(),
             .compress_lz77 = true,
         },
     });
@@ -184,7 +187,7 @@ fn buildExamples(b: *GbaBuild) void {
         .image_path = "examples/mode4fliplz/back.bmp",
         .output_path = "examples/mode4fliplz/back.lz",
         .options = .{
-            .palettizer = mode4flip_pal.pal(),
+            .palettizer = mode4fliplz_pal.pal(),
             .compress_lz77 = true,
         },
     });
@@ -208,47 +211,16 @@ pub fn build(std_b: *std.Build) void {
     const host_target = std_b.standardTargetOptions(.{});
     const optimize = std_b.standardOptimizeOption(.{});
 
-    // Run tests with `zig build test`.
-    const test_math = std_b.addRunArtifact(std_b.addTest(.{
+    // Run tests from the repository root so SDK and host build helpers can
+    // share one test target without escaping the module path.
+    const test_sdk = std_b.addRunArtifact(std_b.addTest(.{
         .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/math.zig"),
-            .target = host_target,
-            .optimize = optimize,
-        }),
-    }));
-    const test_format = std_b.addRunArtifact(std_b.addTest(.{
-        .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/format.zig"),
-            .target = host_target,
-            .optimize = optimize,
-        }),
-    }));
-    const test_display_vram = std_b.addRunArtifact(std_b.addTest(.{
-        .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/display_vram.zig"),
-            .target = host_target,
-            .optimize = optimize,
-        }),
-    }));
-    const test_display_object = std_b.addRunArtifact(std_b.addTest(.{
-        .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/display_object.zig"),
-            .target = host_target,
-            .optimize = optimize,
-        }),
-    }));
-    const test_display_palette = std_b.addRunArtifact(std_b.addTest(.{
-        .root_module = std_b.createModule(.{
-            .root_source_file = std_b.path("src/gba/display_palette.zig"),
+            .root_source_file = std_b.path("test.zig"),
             .target = host_target,
             .optimize = optimize,
         }),
     }));
 
     const test_step = std_b.step("test", "Run unit tests");
-    test_step.dependOn(&test_math.step);
-    test_step.dependOn(&test_format.step);
-    test_step.dependOn(&test_display_vram.step);
-    test_step.dependOn(&test_display_object.step);
-    test_step.dependOn(&test_display_palette.step);
+    test_step.dependOn(&test_sdk.step);
 }

@@ -4,7 +4,7 @@ const ColorRgba32 = @import("color.zig").ColorRgba32;
 const ColorQuantizer = @import("color.zig").ColorQuantizer;
 const ColorQuantizerLinear = @import("color.zig").ColorQuantizerLinear;
 const savePalette = @import("color.zig").savePalette;
-const ColorRgb555 = @import("../src/gba/color.zig").ColorRgb555;
+const ColorRgb555 = @import("../src/gba/graphics/color.zig").ColorRgb555;
 
 /// Result type returned by `colorRgbNearestLinear`.
 const NearestColorResult = struct {
