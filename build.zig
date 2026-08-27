@@ -284,7 +284,7 @@ pub fn build(std_b: *std.Build) void {
     const runtime_docs = addDocs(std_b, "gba", std_b.path("src/gba/gba.zig"), &.{});
     // Do not use this repository's build.zig as a documentation root: its
     // exported build function constructs every example and asset pipeline.
-    const build_docs = addDocs(std_b, "build", std_b.path("src/build_api.zig"), &.{
+    const build_docs = addDocs(std_b, "build", std_b.path("build/build_api.zig"), &.{
         .{ .name = "gba_build", .source_file = std_b.path("gba_build.zig") },
     });
     const docs_index = std_b.addInstallFile(std_b.path("docs/api-index.html"), "docs/index.html");
