@@ -1,45 +1,58 @@
-name: Build docs
+name: Publish documentation
 
 on:
   push:
     branches:
       - master
-    tags:
-      - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
 jobs:
-  build-docs:
-    # disable for now
-    if: false
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    concurrency:
-      group: "build-docs"
-      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0 # May be required for tag metadata?
+          fetch-depth: 0
 
-      - name: Install anyzig
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Install Zig
         run: |
           wget -O - https://github.com/marler8997/anyzig/releases/latest/download/anyzig-x86_64-linux.tar.gz | tar xz
-          chmod 777 ./zig
+          chmod 755 ./zig
 
-      - name: Build API docs
+      - name: Build guide
+        uses: retypeapp/action-build@latest
+
+      - name: Build API reference
         run: |
-          mkdir docs-out/
-          ./zig build-lib -femit-docs=docs-out/gba src/gba/gba.zig
-          ./zig build-lib -femit-docs=docs-out/build src/build/build.zig
-          cp docs/api-index.html docs-out/index.html
+          ./zig build docs --prefix public
+          mv public/docs public/reference
 
-      - name: Deploy to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs-out
-          destination_dir: "${{ (github.ref_type == 'tag' && github.ref_name) || 'master' }}"
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

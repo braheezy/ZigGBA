@@ -18,6 +18,10 @@ const asm_file_paths = [_][]const u8{
     "src/gba/mem.s",
 };
 
+/// Configures GBA targets, ROM artifacts, and build-time asset processing.
+///
+/// Create one with `GbaBuild.create` from a game's `build.zig`, then use
+/// `addExecutable` to define each ROM.
 pub const GbaBuild = struct {
     pub const CliOptions = struct {
         debug: bool = false,
@@ -392,6 +396,7 @@ pub const GbaBuild = struct {
     }
 };
 
+/// A GBA ROM build target created by `GbaBuild.addExecutable`.
 pub const GbaExecutable = struct {
     b: *GbaBuild,
     step: *std.Build.Step.Compile,

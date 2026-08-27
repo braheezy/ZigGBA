@@ -1,4 +1,7 @@
-//! Module for memory related functions and accesses
+//! GBA memory regions, direct memory operations, DMA, and wait-state control.
+//!
+//! Prefer the higher-level display, sound, and interrupt namespaces for their
+//! respective registers. The raw memory map is provided for advanced use.
 
 const builtin = @import("builtin");
 const std = @import("std");
@@ -125,10 +128,9 @@ pub fn memcpy(
     /// Number of bytes to copy.
     count_bytes: u32,
 ) void {
-    if(@inComptime() or comptime(builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
+    if (@inComptime() or comptime (builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
         @memcpy(destination[0..count_bytes], source[0..count_bytes]);
-    }
-    else {
+    } else {
         memcpy_thumb(@ptrCast(destination), @ptrCast(source), count_bytes);
     }
 }
@@ -148,10 +150,9 @@ pub fn memcpy16(
     /// Number of 16-bit half words to copy.
     count_half_words: u32,
 ) void {
-    if(@inComptime() or comptime(builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
+    if (@inComptime() or comptime (builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
         @memcpy(destination[0..count_half_words], source[0..count_half_words]);
-    }
-    else {
+    } else {
         memcpy16_thumb(@ptrCast(destination), @ptrCast(source), count_half_words);
     }
 }
@@ -171,10 +172,9 @@ pub fn memcpy32(
     /// Number of 32-bit words to copy.
     count_words: u32,
 ) void {
-    if(@inComptime() or comptime(builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
+    if (@inComptime() or comptime (builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
         @memcpy(destination[0..count_words], source[0..count_words]);
-    }
-    else {
+    } else {
         memcpy32_thumb(@ptrCast(destination), @ptrCast(source), count_words);
     }
 }
@@ -194,10 +194,9 @@ pub fn memset(
     /// Number of bytes to copy.
     count_bytes: u32,
 ) void {
-    if(@inComptime() or comptime(builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
+    if (@inComptime() or comptime (builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
         @memset(destination[0..count_bytes], value);
-    }
-    else {
+    } else {
         memset_thumb(@ptrCast(destination), value, count_bytes);
     }
 }
@@ -217,10 +216,9 @@ pub fn memset16(
     count_half_words: u32,
 ) void {
     assert((@intFromPtr(destination) & 1) == 0); // Check alignment
-    if(@inComptime() or comptime(builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
+    if (@inComptime() or comptime (builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
         @memset(destination[0..count_half_words], value);
-    }
-    else {
+    } else {
         memset16_thumb(@ptrCast(destination), value, count_half_words);
     }
 }
@@ -240,10 +238,9 @@ pub fn memset32(
     count_words: u32,
 ) void {
     assert((@intFromPtr(destination) & 3) == 0); // Check alignment
-    if(@inComptime() or comptime(builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
+    if (@inComptime() or comptime (builtin.cpu.model != &std.Target.arm.cpu.arm7tdmi)) {
         @memset(destination[0..count_words], value);
-    }
-    else {
+    } else {
         memset32_thumb(@ptrCast(destination), value, count_words);
     }
 }
@@ -257,8 +254,8 @@ pub fn setByteVram(
 ) void {
     const dest_lo = @intFromPtr(destination) & 1;
     // Destination is half-word aligned.
-    if(dest_lo == 0) {
-        const dest_16: *volatile u16 = @alignCast(@ptrCast(destination));
+    if (dest_lo == 0) {
+        const dest_16: *volatile u16 = @ptrCast(@alignCast(destination));
         const read_16 = dest_16.*;
         const write_16 = (read_16 & 0xff00) | value;
         dest_16.* = write_16;
@@ -266,7 +263,7 @@ pub fn setByteVram(
     // Destination is not half-word aligned.
     else {
         const dest_8: [*]volatile u8 = @ptrCast(destination);
-        const dest_16: *volatile u16 = @alignCast(@ptrCast(dest_8 - 1));
+        const dest_16: *volatile u16 = @ptrCast(@alignCast(dest_8 - 1));
         const read_16 = dest_16.*;
         const write_16 = (read_16 & 0x00ff) | (@as(u16, value) << 8);
         dest_16.* = write_16;
@@ -287,22 +284,15 @@ pub fn setNibbleVram(
     const dest_8_offset = dest_8 + (nibble_offset >> 1);
     const dest_8_offset_lo = @intFromPtr(dest_8_offset) & 1;
     const dest_4_lo = nibble_offset & 1;
-    if(dest_8_offset_lo == 0) {
-        const dest_16: *volatile u16 = @alignCast(@ptrCast(dest_8_offset));
+    if (dest_8_offset_lo == 0) {
+        const dest_16: *volatile u16 = @ptrCast(@alignCast(dest_8_offset));
         const read_16: u16 = dest_16.*;
-        const write_16 = (
-            if(dest_4_lo == 0) ((read_16 & 0xfff0) | value)
-            else ((read_16 & 0xff0f) | (@as(u16, value) << 4))
-        );
+        const write_16 = (if (dest_4_lo == 0) ((read_16 & 0xfff0) | value) else ((read_16 & 0xff0f) | (@as(u16, value) << 4)));
         dest_16.* = write_16;
-    }
-    else {
-        const dest_16: *volatile u16 = @alignCast(@ptrCast(dest_8_offset - 1));
+    } else {
+        const dest_16: *volatile u16 = @ptrCast(@alignCast(dest_8_offset - 1));
         const read_16: u16 = dest_16.*;
-        const write_16 = (
-            if(dest_4_lo == 0) ((read_16 & 0xf0ff) | (@as(u16, value) << 8))
-            else ((read_16 & 0x0fff) | (@as(u16, value) << 12))
-        );
+        const write_16 = (if (dest_4_lo == 0) ((read_16 & 0xf0ff) | (@as(u16, value) << 8)) else ((read_16 & 0x0fff) | (@as(u16, value) << 12)));
         dest_16.* = write_16;
     }
 }
@@ -321,10 +311,7 @@ pub fn setNibble(
     const dest_8_offset = dest_8 + (nibble_offset >> 1);
     const dest_4_lo = nibble_offset & 1;
     const read_8 = dest_8_offset.*;
-    const write_8 = (
-        if(dest_4_lo == 0) (read_8 & 0xf0) | value
-        else (read_8 & 0x0f) | (@as(u8, value) << 4)
-    );
+    const write_8 = (if (dest_4_lo == 0) (read_8 & 0xf0) | value else (read_8 & 0x0f) | (@as(u8, value) << 4));
     dest_8_offset.* = write_8;
 }
 
@@ -338,10 +325,9 @@ pub fn getNibble(
     const dest_8: [*]volatile u8 = @ptrCast(source);
     const value_8 = dest_8[nibble_offset >> 1];
     const dest_4_lo = nibble_offset & 1;
-    if(dest_4_lo == 0) {
+    if (dest_4_lo == 0) {
         return @intCast(value_8 & 0xf);
-    }
-    else {
+    } else {
         return @intCast(value_8 >> 4);
     }
 }
@@ -370,6 +356,4 @@ pub const InternalMemoryControl = packed struct(u32) {
 
 /// Internal memory control.
 /// Corresponds to an undocumented hardware register.
-pub const internal_ctrl: *volatile InternalMemoryControl = (
-    @ptrFromInt(io_address + 0x800)
-);
+pub const internal_ctrl: *volatile InternalMemoryControl = (@ptrFromInt(io_address + 0x800));

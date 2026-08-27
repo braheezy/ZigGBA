@@ -383,9 +383,16 @@ const AssetWriter = struct {
     }
 
     fn add(self: *AssetWriter, name: []const u8, data: []const u8) void {
+        // Generated Zig source is also parsed by Zig's documentation
+        // generator. It requires a final newline, while the multiline strings
+        // used for asset templates intentionally omit one for readability.
+        const owned_data = if (std.mem.endsWith(u8, name, ".zig") and !std.mem.endsWith(u8, data, "\n"))
+            self.b.fmt("{s}\n", .{data})
+        else
+            self.b.allocator.dupe(u8, data) catch @panic("OOM");
         self.files.append(self.b.allocator, .{
             .name = name,
-            .data = self.b.allocator.dupe(u8, data) catch @panic("OOM"),
+            .data = owned_data,
         }) catch @panic("OOM");
     }
 

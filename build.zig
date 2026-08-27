@@ -2,11 +2,53 @@
 
 const std = @import("std");
 
+/// Build helpers used by a game's `build.zig` to produce GBA ROMs and assets.
 pub const GbaBuild = @import("gba_build.zig").GbaBuild;
 
 // Import asset processing utilities
 const root_path = GbaBuild.ziggbaPath();
+/// Color types and palette helpers available to build scripts.
 pub const color = @import("build/color.zig");
+
+/// Add a Zig documentation generator command and install its static output.
+fn addDocs(
+    b: *std.Build,
+    name: []const u8,
+    root_source_file: std.Build.LazyPath,
+) *std.Build.Step.InstallDir {
+    const generate = b.addSystemCommand(&.{
+        b.graph.zig_exe,
+        "build-lib",
+        "-fno-emit-bin",
+        "--cache-dir",
+        b.cache_root.path orelse ".zig-cache",
+        "--global-cache-dir",
+        b.graph.global_cache_root.path orelse ".zig-global-cache",
+    });
+    const generated_output_dir = generate.addPrefixedOutputDirectoryArg("-femit-docs=", name);
+    generate.addFileArg(root_source_file);
+
+    // The compiler discovers imports itself, so rerun documentation generation
+    // whenever this build step is requested rather than tracking only its root.
+    generate.stdio = .inherit;
+
+    // A documentation root in the repository root makes Zig archive all of
+    // its descendants, including an existing .zig-cache. Those generated
+    // sources are not part of the API and may be incomplete while a build is
+    // in progress, which otherwise makes the docs UI report parse errors.
+    const filter_sources = b.addSystemCommand(&.{
+        "python3",
+        b.pathFromRoot("scripts/filter_doc_sources.py"),
+    });
+    filter_sources.addDirectoryArg(generated_output_dir);
+    const output_dir = filter_sources.addOutputDirectoryArg("filtered-docs");
+
+    return b.addInstallDirectory(.{
+        .source_dir = output_dir,
+        .install_dir = .prefix,
+        .install_subdir = b.fmt("docs/{s}", .{name}),
+    });
+}
 
 // Build all example ROMs.
 fn buildExamples(b: *GbaBuild) void {
@@ -223,4 +265,31 @@ pub fn build(std_b: *std.Build) void {
 
     const test_step = std_b.step("test", "Run unit tests");
     test_step.dependOn(&test_sdk.step);
+
+    // Generate the two public API references. Zig's built-in documentation
+    // generator emits a self-contained HTML, JavaScript, WebAssembly site.
+    const runtime_docs = addDocs(std_b, "gba", std_b.path("src/gba/gba.zig"));
+    // Do not use this repository's build.zig as a documentation root: its
+    // exported build function constructs every example and asset pipeline.
+    const build_docs = addDocs(std_b, "build", std_b.path("build_docs.zig"));
+    const docs_index = std_b.addInstallFile(std_b.path("docs/api-index.html"), "docs/index.html");
+
+    const docs_step = std_b.step("docs", "Generate API documentation in zig-out/docs");
+    docs_step.dependOn(&runtime_docs.step);
+    docs_step.dependOn(&build_docs.step);
+    docs_step.dependOn(&docs_index.step);
+
+    const docs_port = std_b.option(u16, "docs-port", "Port used by the docs-serve step") orelse 8000;
+    const serve_docs = std_b.addSystemCommand(&.{
+        "python3",
+        "-m",
+        "http.server",
+        "--directory",
+        std_b.getInstallPath(.prefix, "docs"),
+        std_b.fmt("{d}", .{docs_port}),
+    });
+    serve_docs.step.dependOn(docs_step);
+
+    const serve_docs_step = std_b.step("docs-serve", "Generate and serve API documentation");
+    serve_docs_step.dependOn(&serve_docs.step);
 }

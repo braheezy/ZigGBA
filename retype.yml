@@ -1,0 +1,16 @@
+input: guide
+output: public
+url: braheezy.github.io/ziggba
+
+branding:
+  title: ZigGBA
+  label: Docs
+
+links:
+  - text: API Reference
+    link: /reference/
+  - text: GitHub
+    link: https://github.com/braheezy/ziggba
+
+footer:
+  copyright: "&copy; Copyright {{ year }} ZigGBA contributors."

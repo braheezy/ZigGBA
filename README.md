@@ -54,6 +54,25 @@ pub export fn main() void {
 }
 ```
 
+## API documentation
+
+ZigGBA's API reference is generated from the Zig doc comments in its public
+runtime and build-helper modules. Generate a static site (including Zig's
+documentation WebAssembly payload) with:
+
+```sh
+zig build docs
+```
+
+The site is written to `zig-out/docs`. To rebuild it and serve it locally:
+
+```sh
+zig build docs-serve
+```
+
+It listens on port 8000 by default; choose another port with
+`zig build docs-serve -Ddocs-port=8080`.
+
 ## Images
 
 ZigGBA includes an experimental typed image-asset path for common formats.
