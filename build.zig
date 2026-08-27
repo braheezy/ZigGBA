@@ -11,10 +11,16 @@ const root_path = GbaBuild.ziggbaPath();
 pub const color = @import("build/color.zig");
 
 /// Add a Zig documentation generator command and install its static output.
+const DocsImport = struct {
+    name: []const u8,
+    source_file: std.Build.LazyPath,
+};
+
 fn addDocs(
     b: *std.Build,
     name: []const u8,
     root_source_file: std.Build.LazyPath,
+    imports: []const DocsImport,
 ) *std.Build.Step.InstallDir {
     const generate = b.addSystemCommand(&.{
         b.graph.zig_exe,
@@ -26,7 +32,14 @@ fn addDocs(
         b.graph.global_cache_root.path orelse ".zig-global-cache",
     });
     const generated_output_dir = generate.addPrefixedOutputDirectoryArg("-femit-docs=", name);
-    generate.addFileArg(root_source_file);
+    for (imports) |import| {
+        generate.addArg("--dep");
+        generate.addArg(import.name);
+    }
+    generate.addPrefixedFileArg("-Mroot=", root_source_file);
+    for (imports) |import| {
+        generate.addPrefixedFileArg(b.fmt("-M{s}=", .{import.name}), import.source_file);
+    }
 
     // The compiler discovers imports itself, so rerun documentation generation
     // whenever this build step is requested rather than tracking only its root.
@@ -268,10 +281,12 @@ pub fn build(std_b: *std.Build) void {
 
     // Generate the two public API references. Zig's built-in documentation
     // generator emits a self-contained HTML, JavaScript, WebAssembly site.
-    const runtime_docs = addDocs(std_b, "gba", std_b.path("src/gba/gba.zig"));
+    const runtime_docs = addDocs(std_b, "gba", std_b.path("src/gba/gba.zig"), &.{});
     // Do not use this repository's build.zig as a documentation root: its
     // exported build function constructs every example and asset pipeline.
-    const build_docs = addDocs(std_b, "build", std_b.path("build_docs.zig"));
+    const build_docs = addDocs(std_b, "build", std_b.path("src/build_api.zig"), &.{
+        .{ .name = "gba_build", .source_file = std_b.path("gba_build.zig") },
+    });
     const docs_index = std_b.addInstallFile(std_b.path("docs/api-index.html"), "docs/index.html");
 
     const docs_step = std_b.step("docs", "Generate API documentation in zig-out/docs");

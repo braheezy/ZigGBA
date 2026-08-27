@@ -2,7 +2,7 @@ const std = @import("std");
 
 const font = @import("build/font.zig");
 const image = @import("build/image.zig");
-const color = @import("build/color.zig");
+pub const color = @import("build/color.zig");
 // Import types from GBA runtime
 const LoggerInterface = @import("src/gba/debug/mod.zig").LoggerInterface;
 const CharsetFlags = font.CharsetFlags;
