@@ -1,6 +1,7 @@
 input: guide
 output: public
 url: braheezy.github.io/ziggba
+favicon: images/gba-icon.png
 
 branding:
   title: ZigGBA
