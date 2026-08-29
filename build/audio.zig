@@ -25,9 +25,11 @@ pub fn addMaxmodRuntime(b: *std.Build, gba_module: *std.Build.Module, _: u8) ?*s
 
 /// One mmutil-generated soundbank, exposed to game code as a Zig module.
 pub const AssetModule = struct {
+    const Kind = enum { sound, music };
+
     const Entry = struct {
         name: []const u8,
-        kind: enum { sound, music },
+        kind: Kind,
         id: u16,
     };
 
@@ -64,7 +66,7 @@ pub const AssetModule = struct {
         self.add(name, source_file, .music);
     }
 
-    fn add(self: *AssetModule, name: []const u8, source_file: std.Build.LazyPath, kind: Entry.kind) void {
+    fn add(self: *AssetModule, name: []const u8, source_file: std.Build.LazyPath, kind: Kind) void {
         if (self.module != null) @panic("cannot add an audio asset after AssetModule.addImport");
         if (!std.zig.isValidId(name)) std.debug.panic("audio asset name '{s}' is not a valid Zig identifier", .{name});
         for (self.entries.items) |entry| if (std.mem.eql(u8, entry.name, name)) std.debug.panic("audio asset module already contains an asset named '{s}'", .{name});
@@ -90,11 +92,12 @@ pub const AssetModule = struct {
             return;
         }
         const run = self.run orelse return;
-        const soundbank = run.addOutputFileArg("soundbank.bin");
+        const soundbank = run.addPrefixedOutputFileArg("-o", "soundbank.bin");
         var source: std.ArrayList(u8) = .empty;
         source.appendSlice(
             self.b.allocator,
-            "/// mmutil-generated Maxmod soundbank. Pass this to `gba.audio.init`.\n" ++
+            "const gba = @import(\"gba\");\n\n" ++
+                "/// mmutil-generated Maxmod soundbank. Pass this to `gba.audio.init`.\n" ++
                 "pub const soundbank align(4) = @embedFile(\"soundbank.bin\").*;\n",
         ) catch @panic("OOM");
         for (self.entries.items) |entry| {
@@ -102,7 +105,7 @@ pub const AssetModule = struct {
                 .sound => "gba.audio.SoundId",
                 .music => "gba.audio.MusicId",
             };
-            source.writer(self.b.allocator).print("pub const {s}: {s} = {d};\n", .{ entry.name, type_name, entry.id }) catch @panic("OOM");
+            source.appendSlice(self.b.allocator, self.b.fmt("pub const {s}: {s} = {d};\n", .{ entry.name, type_name, entry.id })) catch @panic("OOM");
         }
         const files = self.b.addWriteFiles();
         const module = self.b.createModule(.{ .root_source_file = files.add("audio_assets.zig", source.items) });

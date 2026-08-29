@@ -107,13 +107,16 @@ pub fn stopMusic() void {
 /// Pauses the current tracker module without resetting its position.
 pub fn pauseMusic() void {
     requireEnabled();
-    maxmod.mas.mmPause();
+    // Maxmod's `mmPause` currently routes through a generic channel-suspend
+    // helper that is not valid for its `usize` layer type. The mixer already
+    // treats an inactive main layer as paused, so use that stable state bit.
+    maxmod.gba.layer_main.isplaying = 0;
 }
 
 /// Resumes a tracker module previously paused with `pauseMusic`.
 pub fn resumeMusic() void {
     requireEnabled();
-    maxmod.mas.mmResume();
+    maxmod.gba.layer_main.isplaying = 1;
 }
 
 /// Returns whether the current tracker module is actively playing.

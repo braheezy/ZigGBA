@@ -124,6 +124,9 @@ while (true) {
 }
 ```
 
+The [`examples/audio`](examples/audio/) ROM provides a runnable A/B-button WAV
+and XM playback example.
+
 The game can then import the asset as ordinary Zig code:
 
 ```zig
