@@ -1,3 +1,9 @@
+//! Debug logging and panic-reporting helpers for GBA emulators.
+//!
+//! Select the default logger through `GbaBuild.BuildOptions.default_logger`.
+//! The lower-level `agb*` and `mgba*` functions remain available when a ROM
+//! needs to target a particular emulator interface explicitly.
+
 const gba = @import("../gba.zig");
 
 const build_options = @import("ziggba_build_options");

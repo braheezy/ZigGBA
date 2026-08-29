@@ -6,6 +6,7 @@ zig-cache
 *.bin
 *.log
 /zig-out
+/public
 *.lz
 *.mp3
 libtonc*
