@@ -30,6 +30,8 @@ pub const math = @import("math/mod.zig");
 pub const mem = @import("memory/mod.zig");
 /// Direct sound hardware registers and sound-channel definitions.
 pub const sound = @import("sound.zig");
+/// Optional high-level Maxmod music and sound-effect playback.
+pub const audio = @import("audio.zig");
 /// Bitmap-font text layout and rendering helpers.
 pub const text = @import("text/mod.zig");
 /// One of the GBA's hardware timers.
