@@ -10,8 +10,8 @@
             .lazy = true,
         },
         .mmutil_zig = .{
-            .url = "git+https://github.com/braheezy/mmutil-zig.git#e92b5fe3638ea1e39891356de07d68c0927f188f",
-            .hash = "mmutil_zig-0.0.0-y590hZAJAABq_AMp0EERZvf34RbJaQYmt8w2ie-QyqT5",
+            .url = "git+https://github.com/braheezy/mmutil-zig.git#bab7999a3815e5578a09ebc14f5da019c9475755",
+            .hash = "mmutil_zig-0.0.0-y590hYcKAABuK7ogpAXrBgejL39om6P1bf1HJRjMCJ_G",
             .lazy = true,
         },
     },
