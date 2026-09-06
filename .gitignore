@@ -11,3 +11,4 @@ zig-pkg
 *.lz
 *.mp3
 libtonc*
+retype.manifest
