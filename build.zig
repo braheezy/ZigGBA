@@ -262,6 +262,27 @@ fn buildExamples(b: *GbaBuild) void {
     mode4fliplz_pal_step.step.dependOn(&mode4fliplz_front_step.step);
 }
 
+/// Compile every save-medium code path for the ARM target without executing
+/// hardware commands. Host tests cover recovery; this catches target-only
+/// calling-convention, volatile-access, and IWRAM placement regressions.
+fn compileSaveBackends(b: *GbaBuild) void {
+    const gba_module = b.addModule(
+        "save-backends-compile-gba",
+        b.path("src/gba/gba.zig"),
+        .{},
+    );
+    const check = b.addObject(
+        "save-backends-compile",
+        b.path("src/gba/save/target_compile.zig"),
+        .{},
+    );
+    check.root_module.addImport("gba", gba_module);
+
+    const check_step = b.b.step("save-backends-compile", "Compile all save media backends for the GBA target");
+    check_step.dependOn(&check.step);
+    b.b.default_step.dependOn(&check.step);
+}
+
 // Build entry point.
 pub fn build(std_b: *std.Build) void {
     const b = GbaBuild.create(std_b);
