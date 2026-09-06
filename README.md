@@ -73,6 +73,23 @@ zig build docs-serve
 It listens on port 8000 by default; choose another port with
 `zig build docs-serve -Ddocs-port=8080`.
 
+## Save data
+
+`gba.save` provides fixed-size, allocation-free save slots with checksums and
+copy-on-write recovery. Select the cartridge medium explicitly, export its
+ROM marker, and keep the encoded payload format under the game's control:
+
+```zig
+const Saves = gba.save.SlotManager(.sram, .{
+    .slot_count = 3,
+    .payload_len = 512,
+});
+export var save_media_marker linksection(".gba_save_marker") = gba.save.romMarker(.sram);
+```
+
+See the [save-data guide](guide/game-systems/save-data.md) and
+[`examples/save`](examples/save/) for more.
+
 ## Images
 
 ZigGBA includes an experimental typed image-asset path for common formats.
