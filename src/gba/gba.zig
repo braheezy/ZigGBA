@@ -32,6 +32,8 @@ pub const mem = @import("memory/mod.zig");
 pub const sound = @import("sound.zig");
 /// Optional high-level Maxmod music and sound-effect playback.
 pub const audio = @import("audio.zig");
+/// Reliable save slots for SRAM, Flash, and EEPROM cartridge media.
+pub const save = @import("save/root.zig");
 /// Bitmap-font text layout and rendering helpers.
 pub const text = @import("text/mod.zig");
 /// One of the GBA's hardware timers.
