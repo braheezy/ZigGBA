@@ -142,6 +142,10 @@ fn buildExamples(b: *GbaBuild) void {
         .root_source_file = b.path("examples/screenBlock/screenBlock.zig"),
     });
     _ = b.addExecutable(.{
+        .name = "save",
+        .root_source_file = b.path("examples/save/save.zig"),
+    });
+    _ = b.addExecutable(.{
         .name = "surfaces",
         .root_source_file = b.path("examples/surfaces/surfaces.zig"),
         .build_options = .{ .text_charsets = .all },
@@ -295,6 +299,7 @@ pub fn build(std_b: *std.Build) void {
 
     // Build all examples.
     buildExamples(b);
+    compileSaveBackends(b);
 
     const host_target = std_b.standardTargetOptions(.{});
     const optimize = std_b.standardOptimizeOption(.{});
