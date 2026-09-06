@@ -29,22 +29,50 @@ jobs:
         uses: actions/configure-pages@v6
 
       - name: Install Zig
+        shell: bash
         run: |
-          wget -O - https://github.com/marler8997/anyzig/releases/latest/download/anyzig-x86_64-linux.tar.gz | tar xz
-          chmod 755 ./zig
+          # Retype's action cleans untracked files from the checkout.
+          # Keep the compiler outside it and expose it to later steps via PATH.
+          zig_dir="$(mktemp -d "$RUNNER_TEMP/zig.XXXXXX")"
+          curl --fail --location --retry 3 \
+            https://github.com/marler8997/anyzig/releases/latest/download/anyzig-x86_64-linux.tar.gz \
+            --output "$zig_dir/anyzig.tar.gz"
+          tar -xzf "$zig_dir/anyzig.tar.gz" -C "$zig_dir"
+          chmod 755 "$zig_dir/zig"
+          echo "$zig_dir" >> "$GITHUB_PATH"
+          "$zig_dir/zig" version
 
       - name: Build guide
+        id: guide
         uses: retypeapp/action-build@latest
 
       - name: Build API reference
+        shell: bash
+        env:
+          SITE_DIR: ${{ steps.guide.outputs.retype-output-path }}
         run: |
-          ./zig build docs --prefix public
-          mv public/docs public/reference
+          test -n "$SITE_DIR"
+          test -s "$SITE_DIR/index.html"
+          zig build docs --prefix "$SITE_DIR"
+          mv "$SITE_DIR/docs" "$SITE_DIR/reference"
+
+      - name: Verify Pages artifact
+        shell: bash
+        env:
+          SITE_DIR: ${{ steps.guide.outputs.retype-output-path }}
+        run: |
+          test -s "$SITE_DIR/index.html"
+          test -s "$SITE_DIR/reference/index.html"
+          for api in gba build; do
+            for file in index.html main.js main.wasm sources.tar; do
+              test -s "$SITE_DIR/reference/$api/$file"
+            done
+          done
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: public
+          path: ${{ steps.guide.outputs.retype-output-path }}
 
   deploy:
     needs: build

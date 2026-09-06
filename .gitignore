@@ -10,3 +10,4 @@ zig-cache
 *.lz
 *.mp3
 libtonc*
+retype.manifest
