@@ -41,6 +41,7 @@ SECTIONS
 
     .rodata : {
         *(.rodata*)
+        KEEP(*(.gba_save_marker))
         . = ALIGN(4);
     } >rom = 0xff
 
