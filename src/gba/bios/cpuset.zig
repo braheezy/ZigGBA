@@ -67,7 +67,6 @@ pub fn cpuSet(
             @memcpy(destination[0..count], source[0..count]);
         }
     } else {
-        // TODO: All bios calls should be assumed to clobber r0, r1, r3
         const raw_options: u32 = @bitCast(options);
         asm volatile ("swi 0x0b"
             :
