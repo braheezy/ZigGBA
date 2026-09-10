@@ -266,8 +266,6 @@ fn buildExamples(b: *GbaBuild) void {
 pub fn build(std_b: *std.Build) void {
     const b = GbaBuild.create(std_b);
 
-    // TODO: Use tile and palette data created by the build system for demos
-
     // Build font data with `zig build font`.
     const font_step = std_b.step("font", "Build fonts for gba.text");
     font_step.dependOn(&b.addBuildFontsStep().step);
