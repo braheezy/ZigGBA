@@ -327,7 +327,7 @@ pub const GbaBuild = struct {
         // Optionally generate ELF file with debug symbols
         if (self.gdb) {
             const install_elf_step = self.b.addInstallArtifact(exe, .{
-                // TODO: Why are ELF files still emitting with no extension?
+                // Give the installed ELF an explicit extension b/c Zig's freestanding output has none.
                 .dest_sub_path = self.b.fmt("{s}.elf", .{options.name}),
             });
             self.b.getInstallStep().dependOn(&install_elf_step.step);
