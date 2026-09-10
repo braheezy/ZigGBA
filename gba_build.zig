@@ -2,6 +2,7 @@ const std = @import("std");
 
 const font = @import("build/font.zig");
 const image = @import("build/image.zig");
+const audio = @import("build/audio.zig");
 pub const color = @import("build/color.zig");
 // Import types from GBA runtime
 const LoggerInterface = @import("src/gba/debug/mod.zig").LoggerInterface;
@@ -31,6 +32,9 @@ pub const GbaBuild = struct {
 
     /// These build options control some aspects of how ZigGBA is compiled.
     pub const BuildOptions = struct {
+        /// Enables the optional Maxmod audio runtime. This lazily fetches
+        /// `maxmod-zig`; projects without audio do not download or link it.
+        audio: ?AudioOptions = null,
         /// Choose default logger for use with `gba.debug.print` and
         /// `gba.debug.write`.
         default_logger: LoggerInterface = .mgba,
@@ -42,6 +46,13 @@ pub const GbaBuild = struct {
         /// Stack buffer size used by `gba.text.print`.
         /// Can be adjusted via `-Dtext_print_stack_size`.
         text_print_stack_size: usize = 512,
+    };
+
+    /// Configuration for the optional Maxmod audio runtime.
+    pub const AudioOptions = struct {
+        /// Number of Maxmod mixing channels. More channels permit more
+        /// simultaneous effects at the cost of IWRAM and CPU time.
+        channels: u8 = 8,
     };
 
     /// `std.Target.Query` object for GBA thumb compilation target.
@@ -154,6 +165,7 @@ pub const GbaBuild = struct {
         b_options.addOption(LoggerInterface, "default_logger", build_options.default_logger);
         b_options.addOption(CharsetFlags, "text_charsets", build_options.text_charsets);
         b_options.addOption(usize, "text_print_stack_size", build_options.text_print_stack_size);
+        b_options.addOption(bool, "audio_enabled", build_options.audio != null);
         return b_options;
     }
 
@@ -274,6 +286,12 @@ pub const GbaBuild = struct {
             self.ziggbaPath(gba_lib_file_path),
             options.build_options,
         );
+        if (options.build_options.audio) |audio_options| {
+            if (audio.addMaxmodRuntime(self.b, gba_module, audio_options.channels)) |maxmod_module| {
+                // Advanced games may still use Maxmod's lower-level controls.
+                exe_module.addImport("maxmod", maxmod_module);
+            }
+        }
         exe_module.linkLibrary(self.addStaticLibrary(
             "ziggba",
             gba_module,
@@ -443,6 +461,12 @@ pub const GbaExecutable = struct {
     /// `AssetModule.addImport` once to make them available under one import.
     pub fn createAssetModule(self: *GbaExecutable) *image.AssetModule {
         return image.AssetModule.create(self.getOwner(), self.step.root_module, self.gba_module);
+    }
+
+    /// Creates an aggregate Maxmod soundbank. Audio must be enabled with
+    /// `.build_options = .{ .audio = .{} }` when this executable is added.
+    pub fn createAudioAssetModule(self: *GbaExecutable) *audio.AssetModule {
+        return audio.AssetModule.create(self.getOwner(), self.step.root_module, self.gba_module);
     }
 
     pub fn dependOn(self: *GbaExecutable, step: *std.Build.Step) void {

@@ -20,10 +20,12 @@ pub const CpuSetOptions = packed struct(u32) {
     /// or whether the destination space should be filled with the value
     /// at `source[0]`.
     fixed: bool,
+    /// Unused hardware bit between the fixed-source and transfer-size flags.
+    _2: u1 = 0,
     /// Indicates whether to operate on 16-bit or 32-bit units.
     size: Size,
     /// Unused bits.
-    _2: u6 = 0,
+    _3: u5 = 0,
 };
 
 /// Options accepted by `cpuFastSet`, pertaining to the `CpuFastSet` BIOS call.
@@ -39,6 +41,11 @@ pub const CpuFastSetOptions = packed struct(u32) {
     /// Unused bits.
     _2: u7 = 0,
 };
+
+test "CpuSet word-transfer flag uses the GBA hardware bit" {
+    const options = CpuSetOptions{ .count = 1, .size = .bits_32 };
+    try std.testing.expectEqual(@as(u32, 0x04000001), @as(u32, @bitCast(options)));
+}
 
 /// Wraps the system's `CpuSet` BIOS call.
 ///

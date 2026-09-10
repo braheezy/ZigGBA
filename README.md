@@ -91,6 +91,42 @@ _ = assets.addImage("player", .{
 assets.addImport("assets");
 ```
 
+## Audio (optional)
+
+Enable Maxmod only for ROMs that need audio. The `maxmod-zig` runtime and
+`mmutil-zig` soundbank compiler are lazy dependencies, so ordinary projects do
+not fetch or link either package.
+
+```zig
+const exe = gba_b.addExecutable(.{
+    .name = "game",
+    .root_source_file = b.path("src/main.zig"),
+    .build_options = .{ .audio = .{} },
+});
+var audio_assets = exe.createAudioAssetModule();
+audio_assets.addSound("jump", b.path("assets/jump.wav"));
+audio_assets.addMusic("theme", b.path("assets/theme.xm"));
+audio_assets.addImport("audio_assets");
+```
+
+```zig
+const gba = @import("gba");
+const audio_assets = @import("audio_assets");
+
+// Call `gba.audio.vBlank()` from your VBlank IRQ handler.
+try gba.audio.init(&audio_assets.soundbank, .{});
+gba.audio.playMusic(audio_assets.theme);
+_ = gba.audio.playSound(audio_assets.jump);
+
+while (true) {
+    gba.audio.frame();
+    gba.bios.vblankIntrWait();
+}
+```
+
+The [`examples/audio`](examples/audio/) ROM provides a runnable A/B-button WAV
+and XM playback example.
+
 The game can then import the asset as ordinary Zig code:
 
 ```zig
@@ -326,7 +362,6 @@ This fork has too many changes to document. The highlights are:
 - Many API rewrites and fixes
 - New core features: interrupts, sound, text
 
-
 ## Build Details
 
 ZigGBA's `zig build` will write example ROMs to `zig-out/`. These are files with a `*.gba` extension which can be run on a GBA using special hardware, or which can run in emulators such as [mGBA](https://github.com/mgba-emu/mgba), [Mesen](https://github.com/SourMesen/Mesen2/), [no$gba](https://problemkaputt.de/gba.htm), and [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance).
@@ -350,11 +385,16 @@ A whole bunch of [examples](./examples/):
 <details>
   <summary>bgAffine</summary>
 
-  ![bgAffine.webp](./examples/bgAffine/bgAffine.webp)
+![bgAffine.webp](./examples/bgAffine/bgAffine.webp)
 </details>
 
 <details>
   <summary>charBlock</summary>
 
-  ![charBlock.png](./examples/charBlock/charBlock.png)
+![charBlock.png](./examples/charBlock/charBlock.png)
 </details>
+
+[Zeleste](https://github.com/braheezy/zeleste) is a full GBA Celeste demake
+made with this library.
+
+![Zeleste gameplay](docs/images/zeleste.png)

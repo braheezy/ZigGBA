@@ -9,17 +9,19 @@ extern fn main() void;
 extern var __data_lma: u8;
 extern var __data_start__: u8;
 extern var __data_end__: u8;
+extern var __bss_start__: u8;
+extern var __bss_end__: u8;
 extern var __iwram_lma: u8;
 extern var __iwram_start__: u8;
 extern var __iwram_end__: u8;
 
 export fn _start_zig() noreturn {
+    const zero: u32 = 0;
     // Initialize REG_WAITCNT.
     // TODO: Provide a build option to more easily customize this behavior
     gba.mem.wait_ctrl.* = .default;
-    // Use BIOS function to clear data.
-    // Don't clear EWRAM or IWRAM: Anything not overwritten later in this
-    // startup routine can safely be garbage bytes.
+    // Use BIOS function to clear hardware state. Startup below initializes the
+    // runtime-owned portions of EWRAM and IWRAM explicitly.
     // TODO: Provide a build option to more easily customize this behavior
     gba.bios.registerRamReset(.{
         .palette = true,
@@ -33,13 +35,22 @@ export fn _start_zig() noreturn {
     gba.bios.cpuSetCopy32(
         @ptrCast(@alignCast(&__iwram_lma)),
         @ptrCast(@alignCast(&__iwram_start__)),
-        @truncate(@intFromPtr(&__iwram_end__) - @intFromPtr(&__iwram_start__)),
+        @truncate((@intFromPtr(&__iwram_end__) - @intFromPtr(&__iwram_start__)) / @sizeOf(u32)),
     );
     // Copy .data section to EWRAM.
     gba.bios.cpuSetCopy32(
         @ptrCast(@alignCast(&__data_lma)),
         @ptrCast(@alignCast(&__data_start__)),
-        @truncate(@intFromPtr(&__data_end__) - @intFromPtr(&__data_start__)),
+        @truncate((@intFromPtr(&__data_end__) - @intFromPtr(&__data_start__)) / @sizeOf(u32)),
+    );
+    // Zig globals with an implicit zero initializer live in `.bss`. This is
+    // especially important for optional subsystems such as Maxmod, whose
+    // mixer state is all zero-initialized. EWRAM contents after reset are not
+    // a usable initial value.
+    gba.bios.cpuSetFill32(
+        @ptrCast(&zero),
+        @ptrCast(@alignCast(&__bss_start__)),
+        @truncate((@intFromPtr(&__bss_end__) - @intFromPtr(&__bss_start__)) / @sizeOf(u32)),
     );
     // Initialize default ISR.
     // TODO: Consider putting isr_default in IWRAM?

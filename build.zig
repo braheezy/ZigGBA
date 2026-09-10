@@ -160,6 +160,18 @@ fn buildExamples(b: *GbaBuild) void {
         .root_source_file = b.path("examples/soundDemo/soundDemo.zig"),
         .build_options = .{ .text_charsets = .all },
     });
+    var audio = b.addExecutable(.{
+        .name = "audio",
+        .root_source_file = b.path("examples/audio/audio.zig"),
+        .build_options = .{
+            .audio = .{},
+            .text_charsets = .{ .latin = true },
+        },
+    });
+    var audio_assets = audio.createAudioAssetModule();
+    audio_assets.addSound("celeste_level_select", b.path("examples/audio/celeste_level_select.wav"));
+    audio_assets.addMusic("bad_apple", b.path("examples/audio/bad_apple.xm"));
+    audio_assets.addImport("audio_assets");
     _ = b.addExecutable(.{
         .name = "swiVsync",
         .root_source_file = b.path("examples/swiVsync/swiVsync.zig"),

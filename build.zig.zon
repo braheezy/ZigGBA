@@ -3,7 +3,18 @@
     .version = "0.0.0",
     .fingerprint = 0x94ed0cc5e826ab7, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .maxmod_zig = .{
+            .url = "git+https://github.com/braheezy/maxmod-zig.git#ff3256527675d5c91679ad98be9fbc612b41c7b7",
+            .hash = "maxmod_zig-0.0.0-QJRpsfdjAwD8BI0hR6VWpPI5Bls7xikqdkDDMBCQgdiq",
+            .lazy = true,
+        },
+        .mmutil_zig = .{
+            .url = "git+https://github.com/braheezy/mmutil-zig.git#bab7999a3815e5578a09ebc14f5da019c9475755",
+            .hash = "mmutil_zig-0.0.0-y590hYcKAABuK7ogpAXrBgejL39om6P1bf1HJRjMCJ_G",
+            .lazy = true,
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
