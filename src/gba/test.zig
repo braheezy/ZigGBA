@@ -3,6 +3,7 @@
 pub const bios_arctan2 = @import("test/bios_arctan2.zig");
 
 test {
+    _ = @import("bios/sound.zig");
     _ = bios_arctan2;
     _ = @import("math/mod.zig");
     _ = @import("format.zig");
