@@ -65,6 +65,18 @@ fn addDocs(
 
 // Build all example ROMs.
 fn buildExamples(b: *GbaBuild) void {
+    const math_test = b.addExecutable(.{
+        .name = "mathTest",
+        .root_source_file = b.path("examples/mathTest/mathTest.zig"),
+    });
+    // The shared test module owns its relative SDK import as well.
+    const gba_module = math_test.step.root_module.import_table.fetchSwapRemove("gba").?.value;
+    math_test.step.root_module.addAnonymousImport("gba_tests", .{
+        .root_source_file = b.path("src/gba/test.zig"),
+        .target = gba_module.resolved_target,
+        .optimize = gba_module.optimize,
+        .imports = &.{.{ .name = "ziggba_build_options", .module = gba_module.import_table.get("ziggba_build_options").? }},
+    });
     var charBlock = b.addExecutable(.{
         .name = "charBlock",
         .root_source_file = b.path("examples/charBlock/charBlock.zig"),

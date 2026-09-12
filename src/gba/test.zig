@@ -1,6 +1,9 @@
 //! Test root for SDK modules that import shared code from `src/gba`.
 
+pub const bios_arctan2 = @import("test/bios_arctan2.zig");
+
 test {
+    _ = bios_arctan2;
     _ = @import("math/mod.zig");
     _ = @import("format.zig");
     _ = @import("display/vram.zig");
