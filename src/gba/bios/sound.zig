@@ -4,6 +4,14 @@ const gba = @import("../gba.zig");
 
 /// Options accepted by `soundDriverMode`.
 pub const SoundDriverModeOptions = packed struct(u32) {
+    /// Final digital-to-analog output resolution, encoded for `SoundDriverMode`.
+    pub const DacResolution = enum(u4) {
+        bits_9 = 8,
+        bits_8 = 9,
+        bits_7 = 10,
+        bits_6 = 11,
+    };
+
     pub const Frequency = enum(u4) {
         hz_5734 = 1,
         hz_7884 = 2,
@@ -24,9 +32,22 @@ pub const SoundDriverModeOptions = packed struct(u32) {
     simultaneous_channels: u4 = 8,
     master_volume: u4 = 15,
     frequency: Frequency = .hz_13379,
-    // TODO: better representation.
-    da_bits: u4,
+    /// Resolution of the final audio output, not the source sample format.
+    dac_resolution: DacResolution = .bits_8,
+    /// Unused BIOS mode bits.
+    _reserved: u8 = 0,
 };
+
+test "SoundDriverMode DAC resolution encoding" {
+    const resolutions = [_]SoundDriverModeOptions.DacResolution{ .bits_9, .bits_8, .bits_7, .bits_6 };
+    for (resolutions, 8..) |resolution, encoding| {
+        const options: SoundDriverModeOptions = .{ .dac_resolution = resolution };
+        const raw: u32 = @bitCast(options);
+        try std.testing.expectEqual(@as(u32, @intCast(encoding)), (raw >> 20) & 0xf);
+        try std.testing.expectEqual(@as(u32, 0), raw >> 24);
+    }
+    try std.testing.expectEqual(SoundDriverModeOptions.DacResolution.bits_8, (SoundDriverModeOptions{}).dac_resolution);
+}
 
 pub const WaveData = extern struct {
     /// Unused bits. GBATEK documents this as an unused data type field.
