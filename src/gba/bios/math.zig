@@ -174,8 +174,8 @@ pub fn arctan2(x: i16, y: i16) gba.math.FixedU16R16 {
     } else {
         return asm volatile ("swi 0x0a"
             : [ret] "={r0}" (-> gba.math.FixedU16R16),
-            : [x] "{r0}" (x),
-              [y] "{r1}" (y),
+            : [x] "{r0}" (@as(i32, x)),
+              [y] "{r1}" (@as(i32, y)),
             : .{ .r0 = true, .r1 = true, .r3 = true });
     }
 }
