@@ -30,7 +30,6 @@ const MathErrorTracker = struct {
 };
 
 fn trigTest(
-    comptime name: []const u8,
     comptime get_expected: fn (radians: f64) f64,
     comptime get_actual: fn (i: u16) i32,
 ) !MathErrorTracker {
@@ -49,7 +48,6 @@ fn trigTest(
         //     );
         // }
     }
-    err_tracker.log(name);
     return err_tracker;
 }
 
@@ -75,40 +73,40 @@ fn cosLerpActual(i: u16) i32 {
 
 test "gba.math.FixedU16R16.sin" {
     const err_tracker = try trigTest(
-        "gba.math.FixedU16R16.sin",
         sinExpected,
         sinActual,
     );
+    errdefer err_tracker.log("gba.math.FixedU16R16.sin");
     try std.testing.expect(err_tracker.max < 0.01);
     try std.testing.expect(err_tracker.average() < 0.002);
 }
 
 test "gba.math.FixedU16R16.sinLerp" {
     const err_tracker = try trigTest(
-        "gba.math.FixedU16R16.sinLerp",
         sinExpected,
         sinLerpActual,
     );
+    errdefer err_tracker.log("gba.math.FixedU16R16.sinLerp");
     try std.testing.expect(err_tracker.max < 0.00005);
     try std.testing.expect(err_tracker.average() < 0.00001);
 }
 
 test "gba.math.FixedU16R16.cos" {
     const err_tracker = try trigTest(
-        "gba.math.FixedU16R16.cos",
         cosExpected,
         cosActual,
     );
+    errdefer err_tracker.log("gba.math.FixedU16R16.cos");
     try std.testing.expect(err_tracker.max < 0.01);
     try std.testing.expect(err_tracker.average() < 0.002);
 }
 
 test "gba.math.FixedU16R16.cosLerp" {
     const err_tracker = try trigTest(
-        "gba.math.FixedU16R16.cosLerp",
         cosExpected,
         cosLerpActual,
     );
+    errdefer err_tracker.log("gba.math.FixedU16R16.cosLerp");
     try std.testing.expect(err_tracker.max < 0.00005);
     try std.testing.expect(err_tracker.average() < 0.00001);
 }
