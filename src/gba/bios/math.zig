@@ -149,8 +149,7 @@ pub fn arctan(x: gba.math.FixedU16R16) gba.math.FixedU16R16 {
 /// as you would expect in tests and at comptime where the GBA BIOS is not
 /// available.
 pub fn arctan2(x: i16, y: i16) gba.math.FixedU16R16 {
-    // TODO: Runs even when building a GBA ROM, and produces bad results anyway.
-    if (false) {
+    if (comptime (!isGbaTarget())) {
         // Reference: https://github.com/ez-me/gba-bios
         if (y == 0) {
             return .initRaw(@as(u16, @bitCast(x)) & 0x8000);
@@ -159,17 +158,21 @@ pub fn arctan2(x: i16, y: i16) gba.math.FixedU16R16 {
         } else if (@abs(x) > @abs(y) or ((@abs(x) == @abs(y) and !(x < 0 and y < 0)))) {
             const ratio = div(@as(i32, y) << 14, x).quotient;
             const atan = arctan(gba.math.FixedU16R16.initRaw(@intCast(@abs(ratio))));
+            // ArcTan receives the magnitude; restore the ratio's sign before
+            // applying the quadrant offset. Angles wrap at one full turn.
+            const angle = if (ratio < 0) 0 -% atan.value else atan.value;
             if (x < 0) {
-                return .initRaw(0x8000 +% atan.value);
+                return .initRaw(0x8000 +% angle);
             } else {
                 const sign_bit = @as(u32, @as(u16, @bitCast(y)) & 0x8000);
-                return .initRaw(@truncate((sign_bit << 1) +% atan.value));
+                return .initRaw(@truncate((sign_bit << 1) +% angle));
             }
         } else {
             const ratio = div(@as(i32, x) << 14, y).quotient;
             const atan = arctan(gba.math.FixedU16R16.initRaw(@intCast(@abs(ratio))));
+            const angle = if (ratio < 0) 0 -% atan.value else atan.value;
             const sign_bit = @as(u32, @as(u16, @bitCast(y)) & 0x8000);
-            return .initRaw(@truncate((0x4000 +% sign_bit) -% atan.value));
+            return .initRaw(@truncate((0x4000 +% sign_bit) -% angle));
         }
     } else {
         return asm volatile ("swi 0x0a"
