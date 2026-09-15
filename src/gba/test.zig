@@ -9,4 +9,5 @@ test {
     _ = @import("display/vram.zig");
     _ = @import("display/object.zig");
     _ = @import("display/palette.zig");
+    _ = @import("save/test.zig");
 }

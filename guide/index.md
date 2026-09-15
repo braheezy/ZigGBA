@@ -39,7 +39,7 @@ pub export fn main() void {
 }
 ```
 
-Build the ROM with `zig build`, then open `zig-out/bin/first.gba` in the emulator.
+Build the ROM with `zig build`, then open `zig-out/first.gba` in the emulator.
 
 ![The three red, green, and blue pixels rendered in mGBA](images/first-example.png)
 
