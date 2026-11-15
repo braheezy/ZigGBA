@@ -42,7 +42,7 @@ pub const Block = [block_size]i32;
 /// Ensures clean block instead of one with possible garbage values.
 pub fn emptyBlock() Block {
     // This is a block of all zeros
-    return [_]i32{0} ** block_size;
+    return @splat(0);
 }
 
 /// The following constants are derived from the standard JPEG quantization
