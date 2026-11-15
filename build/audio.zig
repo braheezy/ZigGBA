@@ -16,7 +16,10 @@ pub fn addMaxmodRuntime(b: *std.Build, gba_module: *std.Build.Module, _: u8) ?*s
         .target = gba_module.resolved_target.?,
         .optimize = gba_module.optimize.?,
     });
-    maxmod_module.addObjectFile(maxmod_dep.path("src/mixer_asm.o"));
+    maxmod_module.addCSourceFile(.{
+        .file = maxmod_dep.path("src/mixer_asm.s"),
+        .language = .assembly_with_preprocessor,
+    });
     maxmod_module.addOptions("build_options", options);
     maxmod_module.addImport("gba", gba_module);
     gba_module.addImport("maxmod", maxmod_module);
