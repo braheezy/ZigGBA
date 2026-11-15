@@ -49,10 +49,8 @@ fn addDocs(
     // its descendants, including an existing .zig-cache. Those generated
     // sources are not part of the API and may be incomplete while a build is
     // in progress, which otherwise makes the docs UI report parse errors.
-    const filter_sources = b.addSystemCommand(&.{
-        "python3",
-        b.pathFromRoot("scripts/filter_doc_sources.py"),
-    });
+    const filter_sources = b.addSystemCommand(&.{"python3"});
+    filter_sources.addFileArg(b.path("scripts/filter_doc_sources.py"));
     filter_sources.addDirectoryArg(generated_output_dir);
     const output_dir = filter_sources.addOutputDirectoryArg("filtered-docs");
 
