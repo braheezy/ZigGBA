@@ -21,6 +21,7 @@
         "assets",
         "src",
         "build",
+        "tools",
         "gba_build.zig",
         "LICENSE",
         "README.md",
