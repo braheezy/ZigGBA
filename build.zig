@@ -282,8 +282,6 @@ pub fn build(std_b: *std.Build) void {
     std_b.getInstallStep().dependOn(&install_pack.step);
     std_b.step("ziggba-pack", "Build the host asset processor").dependOn(&install_pack.step);
 
-    const b = GbaBuild.create(std_b);
-
     // Build font data with `zig build font`.
     const font_step = std_b.step("font", "Build fonts for gba.text");
     font_step.dependOn(&b.addBuildFontsStep().step);
