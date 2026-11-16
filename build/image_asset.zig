@@ -8,6 +8,7 @@ const std = @import("std");
 const color = @import("color.zig");
 const image = @import("image.zig");
 const lz77 = @import("lz77.zig");
+const pack = @import("ziggba-pack.zig");
 const ColorRgb555 = @import("../src/gba/graphics/color.zig").ColorRgb555;
 const BackgroundSize = @import("../src/gba/display/mod.zig").BackgroundSize;
 
@@ -179,6 +180,12 @@ pub const ImageAsset = struct {
     /// RGB555 conversion, and fail if the image exceeds the target palette
     /// capacity.
     pub fn create(b: *std.Build, options: Options) *ImageAsset {
+        return createWithImageInfo(b, options, null);
+    }
+
+    /// Build integration may supply processor metadata; direct callers retain
+    /// the converter's own metadata as a compatibility fallback.
+    pub fn createWithImageInfo(b: *std.Build, options: Options, image_info: ?std.Build.LazyPath) *ImageAsset {
         validateOutputTransforms(options);
         if (options.source_file == .generated) {
             @panic("generated image inputs are not supported by ImageAsset; use a regular source file");
@@ -209,6 +216,9 @@ pub const ImageAsset = struct {
             else
                 null,
         };
+        asset.module.addAnonymousImport("image_info", .{
+            .root_source_file = image_info orelse conversion.outputFile("image-info.zon"),
+        });
         return asset;
     }
 };
@@ -275,6 +285,10 @@ const ImageAssetStep = struct {
             .affine_bg_tilemap_8bpp => createAffineBackgroundTilemap8Bpp(b, &writer, source_path, source, self.options),
             .mode4_bitmap_8bpp => createMode4Bitmap8Bpp(b, &writer, source_path, source, self.options),
         }
+        writer.add("image-info.zon", b.fmt(".{{ .width = {d}, .height = {d} }}\n", .{
+            source.getWidth(),
+            source.getHeight(),
+        }));
         try writer.writeToCache(step, source_path_cache, &self.generated_dir, make_options.progress_node);
     }
 };
@@ -530,6 +544,7 @@ pub const AssetModule = struct {
     b: *std.Build,
     consumer_module: *std.Build.Module,
     gba_module: *std.Build.Module,
+    pack_tool: ?*std.Build.Step.Compile = null,
     entries: std.ArrayList(Entry) = .empty,
     module: ?*std.Build.Module = null,
 
@@ -564,7 +579,10 @@ pub const AssetModule = struct {
             }
         }
 
-        const asset = ImageAsset.create(self.b, options);
+        const asset = if (self.pack_tool) |tool|
+            ImageAsset.createWithImageInfo(self.b, options, pack.addImageInfo(self.b, tool, options.source_file))
+        else
+            ImageAsset.create(self.b, options);
         self.entries.append(self.b.allocator, .{ .name = name, .asset = asset }) catch @panic("OOM");
         return asset;
     }
@@ -638,8 +656,8 @@ fn createObjTiles4Bpp(
     const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 16, 2);
     writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
-        \\pub const width: u16 = {d};
-        \\pub const height: u16 = {d};
+        \\pub const width: u16 = @intCast(@import("image_info").width);
+        \\pub const height: u16 = @intCast(@import("image_info").height);
         \\pub const tile_count: usize = {d};
         \\pub const palette_color_count: usize = {d};
         \\pub const width_tiles: usize = {d};
@@ -661,8 +679,6 @@ fn createObjTiles4Bpp(
         \\{s}
         \\{s}
     , .{
-        source.getWidth(),
-        source.getHeight(),
         tiles.len,
         palette.count,
         frames.width_tiles,
@@ -728,8 +744,8 @@ fn createBackgroundTilemap4Bpp(
     const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.Entry", output.map.len, 2);
     writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
-        \\pub const width: u16 = {d};
-        \\pub const height: u16 = {d};
+        \\pub const width: u16 = @intCast(@import("image_info").width);
+        \\pub const height: u16 = @intCast(@import("image_info").height);
         \\pub const source_width_tiles: usize = {d};
         \\pub const source_height_tiles: usize = {d};
         \\pub const map_width_tiles: usize = {d};
@@ -742,8 +758,6 @@ fn createBackgroundTilemap4Bpp(
         \\{s}
         \\{s}
     , .{
-        source.getWidth(),
-        source.getHeight(),
         output.source_width_tiles,
         output.source_height_tiles,
         output.map_width_tiles,
@@ -816,8 +830,8 @@ fn createMultiBankBackgroundTilemap4Bpp(
     const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.Entry", output.map.len, 2);
     writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
-        \\pub const width: u16 = {d};
-        \\pub const height: u16 = {d};
+        \\pub const width: u16 = @intCast(@import("image_info").width);
+        \\pub const height: u16 = @intCast(@import("image_info").height);
         \\pub const source_width_tiles: usize = {d};
         \\pub const source_height_tiles: usize = {d};
         \\pub const map_width_tiles: usize = {d};
@@ -830,8 +844,6 @@ fn createMultiBankBackgroundTilemap4Bpp(
         \\{s}
         \\{s}
     , .{
-        source.getWidth(),
-        source.getHeight(),
         output.source_width_tiles,
         output.source_height_tiles,
         output.map_width_tiles,
@@ -881,13 +893,12 @@ fn createBackgroundTilemap8Bpp(
     };
     defer output.deinit(b.allocator);
 
-    createNormal8BppModule(b, writer, source, palette, output, options.transforms);
+    createNormal8BppModule(b, writer, palette, output, options.transforms);
 }
 
 fn createNormal8BppModule(
     b: *std.Build,
     writer: *AssetWriter,
-    source: image.Image,
     palette: Palette8Bpp,
     output: image.ConvertImageNormalTilemap8BppOutput,
     transforms: ImageAsset.OutputTransforms,
@@ -900,8 +911,8 @@ fn createNormal8BppModule(
     const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.Entry", output.map.len, 2);
     writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
-        \\pub const width: u16 = {d};
-        \\pub const height: u16 = {d};
+        \\pub const width: u16 = @intCast(@import("image_info").width);
+        \\pub const height: u16 = @intCast(@import("image_info").height);
         \\pub const source_width_tiles: usize = {d};
         \\pub const source_height_tiles: usize = {d};
         \\pub const map_width_tiles: usize = {d};
@@ -914,8 +925,6 @@ fn createNormal8BppModule(
         \\{s}
         \\{s}
     , .{
-        source.getWidth(),
-        source.getHeight(),
         output.source_width_tiles,
         output.source_height_tiles,
         output.map_width_tiles,
@@ -976,8 +985,8 @@ fn createAffineBackgroundTilemap8Bpp(
     const map_declaration = assetOutputDeclaration(b, map_output, "map", "gba.display.Screenblock.AffinePair", output.map.len, 2);
     writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
-        \\pub const width: u16 = {d};
-        \\pub const height: u16 = {d};
+        \\pub const width: u16 = @intCast(@import("image_info").width);
+        \\pub const height: u16 = @intCast(@import("image_info").height);
         \\pub const source_width_tiles: usize = {d};
         \\pub const source_height_tiles: usize = {d};
         \\pub const map_dimension_tiles: usize = {d};
@@ -989,8 +998,6 @@ fn createAffineBackgroundTilemap8Bpp(
         \\{s}
         \\{s}
     , .{
-        source.getWidth(),
-        source.getHeight(),
         output.source_width_tiles,
         output.source_height_tiles,
         output.map_dimension_tiles,
@@ -1044,15 +1051,13 @@ fn createMode4Bitmap8Bpp(
     const palette_declaration = assetOutputDeclaration(b, palette_output, "palette", "gba.ColorRgb555", 256, 2);
     writer.add("asset.zig", b.fmt(
         \\const gba = @import("gba");
-        \\pub const width: u16 = {d};
-        \\pub const height: u16 = {d};
+        \\pub const width: u16 = @intCast(@import("image_info").width);
+        \\pub const height: u16 = @intCast(@import("image_info").height);
         \\pub const pixel_count: usize = {d};
         \\pub const palette_color_count: usize = {d};
         \\{s}
         \\{s}
     , .{
-        output.width,
-        output.height,
         output.data.len,
         palette.count,
         pixels_declaration,

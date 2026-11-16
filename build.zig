@@ -9,6 +9,8 @@ pub const GbaBuild = @import("gba_build.zig").GbaBuild;
 const root_path = GbaBuild.ziggbaPath();
 /// Color types and palette helpers available to build scripts.
 pub const color = @import("build/color.zig");
+/// Host-side asset processing helpers.
+pub const pack = @import("build/ziggba-pack.zig");
 
 /// Add a Zig documentation generator command and install its static output.
 const DocsImport = struct {
@@ -274,6 +276,12 @@ fn buildExamples(b: *GbaBuild) void {
 
 // Build entry point.
 pub fn build(std_b: *std.Build) void {
+    const b = GbaBuild.create(std_b);
+    const pack_tool = b.getPackTool();
+    const install_pack = std_b.addInstallArtifact(pack_tool, .{});
+    std_b.getInstallStep().dependOn(&install_pack.step);
+    std_b.step("ziggba-pack", "Build the host asset processor").dependOn(&install_pack.step);
+
     const b = GbaBuild.create(std_b);
 
     // Build font data with `zig build font`.
