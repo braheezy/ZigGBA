@@ -9,6 +9,8 @@ pub const GbaBuild = @import("gba_build.zig").GbaBuild;
 const root_path = GbaBuild.ziggbaPath();
 /// Color types and palette helpers available to build scripts.
 pub const color = @import("build/color.zig");
+/// Host-side asset processing helpers.
+pub const pack = @import("build/ziggba-pack.zig");
 
 /// Add a Zig documentation generator command and install its static output.
 const DocsImport = struct {
@@ -49,10 +51,8 @@ fn addDocs(
     // its descendants, including an existing .zig-cache. Those generated
     // sources are not part of the API and may be incomplete while a build is
     // in progress, which otherwise makes the docs UI report parse errors.
-    const filter_sources = b.addSystemCommand(&.{
-        "python3",
-        b.pathFromRoot("scripts/filter_doc_sources.py"),
-    });
+    const filter_sources = b.addSystemCommand(&.{"python3"});
+    filter_sources.addFileArg(b.path("scripts/filter_doc_sources.py"));
     filter_sources.addDirectoryArg(generated_output_dir);
     const output_dir = filter_sources.addOutputDirectoryArg("filtered-docs");
 
@@ -277,6 +277,10 @@ fn buildExamples(b: *GbaBuild) void {
 // Build entry point.
 pub fn build(std_b: *std.Build) void {
     const b = GbaBuild.create(std_b);
+    const pack_tool = b.getPackTool();
+    const install_pack = std_b.addInstallArtifact(pack_tool, .{});
+    std_b.getInstallStep().dependOn(&install_pack.step);
+    std_b.step("ziggba-pack", "Build the host asset processor").dependOn(&install_pack.step);
 
     // Build font data with `zig build font`.
     const font_step = std_b.step("font", "Build fonts for gba.text");

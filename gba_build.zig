@@ -3,6 +3,7 @@ const std = @import("std");
 const font = @import("build/font.zig");
 const image = @import("build/image.zig");
 const audio = @import("build/audio.zig");
+const pack = @import("build/ziggba-pack.zig");
 pub const color = @import("build/color.zig");
 // Import types from GBA runtime
 const LoggerInterface = @import("src/gba/debug/mod.zig").LoggerInterface;
@@ -71,6 +72,7 @@ pub const GbaBuild = struct {
     thumb_target: std.Build.ResolvedTarget,
     optimize_mode: std.builtin.OptimizeMode,
     gdb: bool,
+    pack_tool: ?*std.Build.Step.Compile = null,
 
     pub fn create(b: *std.Build) *GbaBuild {
         const gba_b = b.allocator.create(GbaBuild) catch @panic("OOM");
@@ -124,6 +126,22 @@ pub const GbaBuild = struct {
         } else {
             return self.b.path(sub_path);
         }
+    }
+
+    /// Returns the shared host processor, for build setup that needs the artifact.
+    pub fn getPackTool(self: *GbaBuild) *std.Build.Step.Compile {
+        if (self.pack_tool) |tool| return tool;
+        const tool = if (self.ziggba_dep) |dep|
+            dep.artifact("ziggba-pack")
+        else
+            pack.createExecutable(self.b, self.ziggbaPath("."));
+        self.pack_tool = tool;
+        return tool;
+    }
+
+    /// Inspect an image and return its dimensions as a generated ZON file.
+    pub fn addImageInfo(self: *GbaBuild, source_file: std.Build.LazyPath) std.Build.LazyPath {
+        return pack.addImageInfo(self.b, self.getPackTool(), source_file);
     }
 
     /// Get options passed via compiler arguments.
@@ -353,7 +371,7 @@ pub const GbaBuild = struct {
         self: *GbaBuild,
         options: image.ImageAsset.Options,
     ) *image.ImageAsset {
-        return image.ImageAsset.create(self.b, options);
+        return image.ImageAsset.createWithImageInfo(self.b, options, self.addImageInfo(options.source_file));
     }
 
     /// Builds an exact shared palette for related Mode 4 frames.
@@ -442,7 +460,7 @@ pub const GbaExecutable = struct {
         import_name: []const u8,
         options: image.ImageAsset.Options,
     ) *image.ImageAsset {
-        const asset = image.ImageAsset.create(self.getOwner(), options);
+        const asset = self.b.addImage(options);
         asset.addImport(self.step.root_module, import_name, self.gba_module);
         return asset;
     }
@@ -460,7 +478,9 @@ pub const GbaExecutable = struct {
     /// Add assets with `AssetModule.addImage`, then call
     /// `AssetModule.addImport` once to make them available under one import.
     pub fn createAssetModule(self: *GbaExecutable) *image.AssetModule {
-        return image.AssetModule.create(self.getOwner(), self.step.root_module, self.gba_module);
+        const assets = image.AssetModule.create(self.getOwner(), self.step.root_module, self.gba_module);
+        assets.pack_tool = self.b.getPackTool();
+        return assets;
     }
 
     /// Creates an aggregate Maxmod soundbank. Audio must be enabled with

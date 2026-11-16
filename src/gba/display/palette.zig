@@ -95,7 +95,7 @@ fn paletteBankContains(color_offset: u4, color_count: usize) bool {
 }
 
 test "palette bank offsets and bounds" {
-    var palette = Palette{ .colors = [_]gba.ColorRgb555{.black} ** 256 };
+    var palette = Palette{ .colors = @splat(0) };
     palette.banks[1][0] = .white;
     palette.banks[15][15] = gba.ColorRgb555.rgb(1, 2, 3);
 

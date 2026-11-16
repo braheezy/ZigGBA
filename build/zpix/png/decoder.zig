@@ -137,8 +137,8 @@ idat_length: u32 = 0,
 // use_transparent and transparent are used for grayscale and truecolor
 // transparency, as opposed to palette transparency.
 use_transparent: bool = false,
-transparent: [6]u8 = [_]u8{0} ** 6,
-scratch: [3 * 256]u8 = [_]u8{0} ** (3 * 256),
+transparent: [6]u8 = @splat(0),
+scratch: [3 * 256]u8 = @splat(0),
 
 pub fn decode(allocator: std.mem.Allocator, r: *std.Io.Reader) !image.Image {
     // We may do some allocations for some images that are easier to clean up if an arena is used.

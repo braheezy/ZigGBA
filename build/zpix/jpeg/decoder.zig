@@ -150,14 +150,14 @@ huff: [max_tc + 1][max_th + 1]HuffTable,
 // Quantization table, in zig-zag order.
 quant: [max_tq + 1]idct.Block,
 // preallocated temp buffer to reuse while reading
-tmp: [2 * idct.block_size]u8 = [_]u8{0} ** (2 * idct.block_size),
+tmp: [2 * idct.block_size]u8 = @splat(0),
 
 pub fn decode(al: std.mem.Allocator, r: *std.Io.Reader) !image.Image {
     var d = Decoder{
         .al = al,
         .r = r,
-        .bytes = .{ .buffer = [_]u8{0} ** 4096 },
-        .component = [_]Component{.{}} ** max_components,
+        .bytes = .{ .buffer = @splat(0) },
+        .component = @splat(.{}),
         .huff = undefined,
         .quant = undefined,
         .bits = undefined,
@@ -179,8 +179,8 @@ pub fn decodeConfig(r: *std.Io.Reader) !image.Config {
     var d = Decoder{
         .al = undefined,
         .r = r,
-        .bytes = .{ .buffer = [_]u8{0} ** 4096 },
-        .component = [_]Component{.{}} ** max_components,
+        .bytes = .{ .buffer = @splat(0) },
+        .component = @splat(.{}),
         .huff = undefined,
         .quant = undefined,
         .bits = undefined,
@@ -1169,8 +1169,7 @@ fn processSos(self: *Decoder, n: i32) !void {
         td: u8 = 0, // DC table selector.
         ta: u8 = 0, // AC table selector.
     };
-    var scan = [_]ScanComponent{.{}} ** max_components;
-    // defer self.al.free(scan);
+    var scan: [max_components]ScanComponent = @splat(.{});
 
     // Accumulating horizontal and vertical sampling factors
     var total_hv_sampling_factors: i32 = 0;
@@ -1288,7 +1287,7 @@ fn processSos(self: *Decoder, n: i32) !void {
     var bx: i32 = 0;
     var by: i32 = 0;
     var block_count: i32 = 0;
-    var dc: [max_components]i32 = [_]i32{0} ** max_components;
+    var dc: [max_components]i32 = @splat(0);
     var b: idct.Block = undefined;
 
     for (0..@intCast(myy)) |my| {
@@ -1446,7 +1445,7 @@ fn processSos(self: *Decoder, n: i32) !void {
                 // Reset the Huffman decoder.
                 self.bits = Bits{};
                 // Reset the DC components, as per section F.2.1.3.1.
-                dc = [_]i32{0} ** max_components;
+                dc = @splat(0);
                 // Reset the progressive decoder state, as per section G.1.2.2.
                 self.eob_run = 0;
             }
