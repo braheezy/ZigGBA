@@ -5,8 +5,9 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .maxmod_zig = .{
-            .url = "git+https://github.com/braheezy/maxmod-zig.git#ff3256527675d5c91679ad98be9fbc612b41c7b7",
-            .hash = "maxmod_zig-0.0.0-QJRpsfdjAwD8BI0hR6VWpPI5Bls7xikqdkDDMBCQgdiq",
+            .path = "../maxmod-zig",
+            // .url = "git+https://github.com/braheezy/maxmod-zig.git#ff3256527675d5c91679ad98be9fbc612b41c7b7",
+            // .hash = "maxmod_zig-0.0.0-QJRpsfdjAwD8BI0hR6VWpPI5Bls7xikqdkDDMBCQgdiq",
             .lazy = true,
         },
         .mmutil_zig = .{
