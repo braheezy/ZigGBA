@@ -64,7 +64,6 @@ SECTIONS
     __data_lma = .;
     .data : AT(__data_lma) {
         __data_start__ = ABSOLUTE(.);
-        KEEP(*(.gba_isr_data))
         *(.data)
         . = ALIGN(4);
         __data_end__ = ABSOLUTE(.);
@@ -73,6 +72,7 @@ SECTIONS
     __bss_lma = .;
     .bss ALIGN(8) (NOLOAD): AT(__bss_lma) {
         __bss_start__ = ABSOLUTE(.);
+        KEEP(*(.gba_isr_data))
         *(.dynbss)
         *(.gnu.linkonce.b*)
         *(.bss)
