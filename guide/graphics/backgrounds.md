@@ -8,7 +8,7 @@ The common setup sequence is: copy palette data, copy tiles, write or copy the m
 const gba = @import("gba");
 const brin = @import("brin.zig");
 
-const screenblock_index: u5 = 31;
+const screenblock_index: u5 = 30;
 
 fn loadData() void {
     const screenblock = &gba.display.screenblocks[screenblock_index];
@@ -27,7 +27,7 @@ pub export fn main() void {
 }
 ```
 
-`brin` is the tile, palette, and map data imported by that example. `screenblock_index` must not overlap the character-block memory occupied by the tiles.
+`brin` is the tile, palette, and map data imported by that example. Its 64×32 map occupies two consecutive 2 KiB screenblocks. Starting at block 30 keeps both halves in background VRAM and leaves the tile data at the start of VRAM untouched.
 
 ![A 4bpp background tile surface from the surfaces demo](../images/surface-4bpp-tiles.png)
 

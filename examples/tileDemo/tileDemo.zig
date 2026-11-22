@@ -3,8 +3,8 @@ const brin = @import("brin.zig");
 
 export var header linksection(".gbaheader") = gba.Header.init("TILEDEMO", "ATDE", "00", 0);
 
-// Screenblock index is chosen to not overlap with VRAM used by tiles.
-const screenblock_index: u5 = 31;
+// The 64x32 map uses the last two background screenblocks, 30 and 31.
+const screenblock_index: u5 = 30;
 
 fn loadData() void {
     const screenblock = &gba.display.screenblocks[screenblock_index];
