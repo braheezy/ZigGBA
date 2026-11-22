@@ -72,18 +72,12 @@ const MgbaLogStream = struct {
         const self: *MgbaLogStream = @fieldParentPtr("io_writer", w);
         var total: usize = 0;
 
-        // Write each buffer in the data array
-        for (data) |buf| {
+        const last = data.len - 1;
+        for (data[0..last]) |buf| {
             total += self.write(buf);
         }
-
-        // Handle splatting (repeating the last buffer)
-        if (splat > 0 and data.len > 0) {
-            const pattern = data[data.len - 1];
-            var i: usize = 0;
-            while (i < splat) : (i += 1) {
-                total += self.write(pattern);
-            }
+        for (0..splat) |_| {
+            total += self.write(data[last]);
         }
 
         return total;
