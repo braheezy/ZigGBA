@@ -5,8 +5,9 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .maxmod_zig = .{
-            .url = "git+https://github.com/braheezy/maxmod-zig.git#ff3256527675d5c91679ad98be9fbc612b41c7b7",
-            .hash = "maxmod_zig-0.0.0-QJRpsfdjAwD8BI0hR6VWpPI5Bls7xikqdkDDMBCQgdiq",
+            // .path = "../maxmod-zig",
+            .url = "git+https://github.com/braheezy/maxmod-zig#22adbfba4f1438ad397903f4dc49316dbfaa4e4c",
+            .hash = "maxmod_zig-0.0.0-QJRpsRFYAwD_76sqv1fPccdajWzPu-LnhUaenf9buVVF",
             .lazy = true,
         },
         .mmutil_zig = .{
@@ -21,6 +22,7 @@
         "assets",
         "src",
         "build",
+        "tools",
         "gba_build.zig",
         "LICENSE",
         "README.md",
